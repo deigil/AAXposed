@@ -27,8 +27,18 @@ import io.github.nitsuya.aa.display.service.AaActivityService
 import io.github.nitsuya.aa.display.util.AABroadcastConst
 import io.github.nitsuya.aa.display.util.AADisplayConfig
 import io.github.nitsuya.aa.display.xposed.hook.AaHook
+import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.AaCoolwalkAutoOpenHook
+import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.AaCoolwalkCompositorHook
+import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.AaCoolwalkLayoutHook
+import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.AaCoolwalkProjectionHook
+import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.CoolwalkDrawingSpecWiden
+import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.CoolwalkFacetBarSurfaceHook
+import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.CoolwalkFacetChrome
+import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.CoolwalkHookEnv
+import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.CoolwalkProjectionBoundsHook
 import io.github.nitsuya.aa.display.xposed.hook.abortMethod
 import io.github.nitsuya.aa.display.xposed.log
+import io.github.nitsuya.aa.display.xposed.logDebug
 import io.github.nitsuya.template.bases.runMain
 import io.github.qauxv.ui.CommonContextWrapper
 import kotlinx.coroutines.delay
@@ -38,7 +48,17 @@ import java.lang.reflect.Constructor
 import java.lang.reflect.Method
 
 object AaUiHook: AaHook() {
-    override val tagName: String = "AAD_AaUiHook"
+    override val tagName: String = CoolwalkHookEnv.TAG
+
+    /**
+     * true：安装 Coolwalk 隐藏 UI 控件栈（车机侧边栏折叠 + 投屏铺满整块车机宽度），
+     *       控制方案保持在手机端悬浮窗（DisplayWindow / ACTION_SCREEN_CONTROL）。
+     * false：走旧行为，在车机侧边栏重建 home/全屏/返回/语音助手图标。
+     */
+    private var hideAaUiControls: Boolean = true
+
+    /** Coolwalk 分支共享状态；仅在 [hideAaUiControls] 为 true 时填充。 */
+    private val env = CoolwalkHookEnv()
 
     private lateinit var layoutInfoConstructor: Constructor<*>
     private var startMethod: Method? = null
@@ -48,16 +68,169 @@ object AaUiHook: AaHook() {
 
     private var resLayoutGhFacetBarId: Int = 0
     private var resIdStatusBarId: Int = 0
+    private var resIdAssistantIconContainerId: Int = 0
+    private var resIdAssistantIconId: Int = 0
     private var resIdLauncherAndDashboardIconContainerId: Int = 0
     private var resIdLauncherAndDashboardIconId: Int = 0
     private var canHookLayout: Boolean = false
     private var canHookFacetBar: Boolean = false
+    private var canHookAssistantIcon: Boolean = false
 
     override fun isSupportProcess(processName: String): Boolean {
+        // Coolwalk 隐藏栈需要 :car（侧边栏/合成器）与 :projection（布局/投屏）两个进程；
+        // 旧的侧边栏重建只在 :projection 生效，由 isEnabled 再过滤一次。
+        return processProjection == processName || processCar == processName
+    }
+
+    override fun isEnabled(config: SharedPreferences?, processName: String): Boolean {
+        hideAaUiControls = AADisplayConfig.HideAaUiControls.get(config)
+        env.autoOpenEnabled = AADisplayConfig.AutoOpen.get(config)
+        env.forceRightAngle = AADisplayConfig.ForceRightAngle.get(config)
+        if (hideAaUiControls) return true
+        // 旧行为不涉及 :car。
         return processProjection == processName
     }
 
     override fun loadDexClass(bridge: DexKitBridge, lpparam: XC_LoadPackage.LoadPackageParam) {
+        if (hideAaUiControls) {
+            loadDexClassCoolwalk(bridge, lpparam)
+        } else {
+            loadDexClassLegacy(bridge)
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Coolwalk 隐藏 UI 控件（来自 Split-Lite 分支）
+    // ------------------------------------------------------------------
+
+    private fun loadDexClassCoolwalk(bridge: DexKitBridge, lpparam: XC_LoadPackage.LoadPackageParam) {
+        env.contentBoundsMethods = try {
+            val byKey = bridge.findMethod {
+                searchPackages = listOf("")
+                matcher { usingStrings("content_bounds") }
+            }
+            val byLog = bridge.findMethod {
+                searchPackages = listOf("")
+                matcher {
+                    usingStrings {
+                        add("onProjectionStart updated config", StringMatchType.StartsWith, false)
+                    }
+                }
+            }
+            (byKey + byLog).mapNotNull { md ->
+                runCatching { md.getMethodInstance(lpparam.classLoader) }.getOrNull()
+            }.distinctBy { "${it.declaringClass.name}#${it.name}#${it.parameterTypes.joinToString { p -> p.name }}" }
+                .also { list ->
+                    log(
+                        tagName,
+                        "AaUiHook: content_bounds methods=${list.size} " +
+                            list.map { "${it.declaringClass.name}#${it.name}" },
+                    )
+                }
+        } catch (e: Throwable) {
+            log(tagName, "AaUiHook: DexKit content_bounds methods failed", e)
+            emptyList()
+        }
+
+        env.facetBarSurfaceMethods = try {
+            val byWidth = bridge.findMethod {
+                searchPackages = listOf("")
+                matcher { usingStrings("onWindowSurfaceAvailable width:") }
+            }
+            val byDims = bridge.findMethod {
+                searchPackages = listOf("")
+                matcher { usingStrings("onWindowSurfaceAvailable dimensions:") }
+            }
+            (byWidth + byDims).mapNotNull { md ->
+                runCatching { md.getMethodInstance(lpparam.classLoader) }.getOrNull()
+            }.distinctBy { "${it.declaringClass.name}#${it.name}#${it.parameterTypes.joinToString { p -> p.name }}" }
+                .also { list ->
+                    log(
+                        tagName,
+                        "AaUiHook: facet-bar surface methods=${list.size} " +
+                            list.map { "${it.declaringClass.name}#${it.name}" },
+                    )
+                }
+        } catch (e: Throwable) {
+            log(tagName, "AaUiHook: DexKit facet-bar surface methods failed", e)
+            emptyList()
+        }
+
+        env.projectionBoundsClassName = try {
+            bridge.findClass {
+                searchPackages = listOf("")
+                matcher { usingStrings("{blX=") }
+            }.mapNotNull { runCatching { it.name }.getOrNull() }
+                .firstOrNull()
+                .also { name ->
+                    log(tagName, "AaUiHook: projection bounds class=${name ?: "null"}")
+                }
+        } catch (e: Throwable) {
+            log(tagName, "AaUiHook: DexKit projection bounds class failed", e)
+            null
+        }
+        CoolwalkProjectionBoundsHook.rememberClassName(env.projectionBoundsClassName)
+
+        env.startMethod = env.resolveCarStartActivityMethod()
+
+        if (lpparam.processName == processCar) {
+            env.loadProjectionResources()
+            return
+        }
+
+        val classes = bridge.findClass {
+            searchPackages = listOf("")
+            matcher {
+                usingStrings {
+                    add("LayoutInfo{layoutResourceId=", StringMatchType.StartsWith, false)
+                }
+            }
+        }
+        if (classes.isEmpty() || classes.size > 1) {
+            throw NoSuchMethodException("AaUiHook: not found LayoutInfo class：${classes.size}")
+        }
+        env.layoutInfoConstructors = env.resolveLayoutInfoConstructors(classes[0].name)
+        log(
+            tagName,
+            "AaUiHook: LayoutInfo ctors=${env.layoutInfoConstructors.size} " +
+                env.layoutInfoConstructors.joinToString { "p${it.parameterCount}" },
+        )
+        env.loadProjectionResources()
+    }
+
+    private fun hookCoolwalk(lpparam: XC_LoadPackage.LoadPackageParam) {
+        env.loadProjectionResources()
+        CoolwalkDrawingSpecWiden.installGearhead(lpparam.classLoader)
+        CoolwalkProjectionBoundsHook.install(
+            lpparam.classLoader,
+            env.projectionBoundsClassName ?: CoolwalkProjectionBoundsHook.cachedClassName(),
+        )
+        CoolwalkFacetBarSurfaceHook.install(env)
+        AaCoolwalkProjectionHook.install(env)
+        if (lpparam.processName == processCar) {
+            AaCoolwalkLayoutHook.installRailWidthDimens(env)
+            AaCoolwalkCompositorHook.install(env)
+            if (env.canHookFacetBar) {
+                CoolwalkFacetChrome.install(env)
+            }
+            // 不安装 AaCoolwalkHuTouchHook：触控/控制方案保留手机端悬浮窗。
+            logDebug(tagName, "AaUiHook: Coolwalk hooks installed (:car)")
+            return
+        }
+        AaCoolwalkLayoutHook.install(env)
+        AaCoolwalkCompositorHook.install(env)
+        if (env.canHookFacetBar) {
+            CoolwalkFacetChrome.install(env)
+        }
+        AaCoolwalkAutoOpenHook.install(env, lpparam)
+        logDebug(tagName, "AaUiHook: Coolwalk hooks installed (:projection)")
+    }
+
+    // ------------------------------------------------------------------
+    // 旧行为：在车机侧边栏重建控件
+    // ------------------------------------------------------------------
+
+    private fun loadDexClassLegacy(bridge: DexKitBridge) {
         val classes = bridge.findClass {
             searchPackages = listOf("")
             matcher {
@@ -83,6 +256,8 @@ object AaUiHook: AaHook() {
 
         resLayoutGhFacetBarId = InitFields.appContext.resources.getIdentifier("gh_coolwalk_vertical_facet_bar", "layout", InitFields.appContext.packageName)
         resIdStatusBarId = getIdByName("status_bar")
+        resIdAssistantIconContainerId = getIdByName("assistant_icon_container")
+        resIdAssistantIconId = getIdByName("assistant_icon")
         resIdLauncherAndDashboardIconContainerId = getIdByName("launcher_and_dashboard_icon_container")
         resIdLauncherAndDashboardIconId = getIdByName("launcher_and_dashboard_icon")
 
@@ -107,10 +282,23 @@ object AaUiHook: AaHook() {
                 "AaUiHook: skip facet-bar override, missing resources: facet=$resLayoutGhFacetBarId, status=$resIdStatusBarId, launcherContainer=$resIdLauncherAndDashboardIconContainerId, launcherIcon=$resIdLauncherAndDashboardIconId"
             )
         }
+        // 助手图标在部分 AA 版本已被移除，缺失时降级：只保留方控触发语音助手
+        canHookAssistantIcon = resIdAssistantIconContainerId != 0 && resIdAssistantIconId != 0
+        if (!canHookAssistantIcon) {
+            log(
+                tagName,
+                "AaUiHook: skip assistant icon hook, missing resources: assistantContainer=$resIdAssistantIconContainerId, assistantIcon=$resIdAssistantIconId"
+            )
+        }
     }
 
     override fun hook(config: SharedPreferences?, lpparam: XC_LoadPackage.LoadPackageParam) {
-        log(tagName,  "AaUiHook: ~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        log(tagName,  "AaUiHook: ~~~~~~~~~~~~~~~~~~~~~~~~~~~ hideAaUiControls=$hideAaUiControls")
+        if (hideAaUiControls) {
+            hookCoolwalk(lpparam)
+            return
+        }
+        // 仅旧行为需要接管 View 点击监听（侧边栏图标改写点击目标）。
         hookBaseClick()
         if (canHookLayout) {
             hookLayout()
@@ -186,6 +374,7 @@ object AaUiHook: AaHook() {
     }
 
     private fun hookFacetBar(config: SharedPreferences?) {
+        val enableDefVoiceAssist = AADisplayConfig.VoiceAssistShell.get(config).isNullOrBlank()
         val closeLauncherDashboard = AADisplayConfig.CloseLauncherDashboard.get(config)
         val autoOpen = AADisplayConfig.AutoOpen.get(config)
         findMethod(LayoutInflater::class.java) {
@@ -274,8 +463,31 @@ object AaUiHook: AaHook() {
                     setPadding(0, 5, 0, 5)
                 },
             )
-            arrayListOf(resIdStatusBarId, resIdLauncherAndDashboardIconContainerId).forEach { vId ->
-                val view = resultViewGroup.findViewById<View>(vId)
+            // 恢复 nitsuya 的助手图标接管：点击原生助手图标改为触发自定义语音助手 Shell（小爱）
+            val assistantIconView: View? = if (canHookAssistantIcon) resultViewGroup.findViewById(resIdAssistantIconId) else null
+            val assistantContainerView: View? = if (canHookAssistantIcon) resultViewGroup.findViewById(resIdAssistantIconContainerId) else null
+            if (assistantIconView != null && assistantContainerView != null) {
+                if (!enableDefVoiceAssist) {
+                    val intentClick = Intent().apply {
+                        action = AABroadcastConst.ACTION_SCREEN_CONTROL
+                        putExtra(AABroadcastConst.EXTRA_ACTION, KeyEvent.KEYCODE_SEARCH)
+                    }
+                    assistantIconView.setOnClickFinallyListener {
+                        ctx.sendBroadcast(intentClick)
+                    }
+                }
+                bottomIds.add(resIdAssistantIconContainerId)
+            } else if (canHookAssistantIcon) {
+                log(tagName, "AaUiHook: assistant icon view not found in facet bar, skip voice assist takeover")
+            }
+            val relocateViews = arrayListOf<View>().apply {
+                resultViewGroup.findViewById<View>(resIdStatusBarId)?.let { add(it) }
+                resultViewGroup.findViewById<View>(resIdLauncherAndDashboardIconContainerId)?.let { add(it) }
+                if (assistantContainerView != null && bottomIds.contains(resIdAssistantIconContainerId)) {
+                    add(assistantContainerView)
+                }
+            }
+            relocateViews.forEach { view ->
                 (view.parent as ViewGroup?)?.apply {
                     removeView(view)
                 }
