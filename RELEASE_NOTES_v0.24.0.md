@@ -91,6 +91,15 @@ Coolwalk facetbar 相关代码来自 `lagXkjy/AADisplay` 的 `AADisplay-Split-Li
 
 ## 验证
 
+测试环境：
+
+| 项目 | 版本 |
+|---|---|
+| 系统 | HyperOS `3.0.307.6` |
+| Android Auto | `17.2` |
+| Xposed 框架 | LSPosed |
+| 车机端 | DHU（Desktop Head Unit） |
+
 - 构建通过：`:aa-display:assembleDebug`。
 - 安装到测试机并重启（改动落在 `system_server`，必须重启才生效）。
 - DHU 实机验证：

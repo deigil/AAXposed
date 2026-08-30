@@ -50,6 +50,7 @@
 
 ### Verification
 - 构建通过：`:aa-display:assembleDebug`
+- 测试环境：HyperOS `3.0.307.6` + Android Auto `17.2` + LSPosed，车机端为 DHU
 - 安装并重启测试机（`system_server` 侧改动需重启生效）
 - DHU 实机验证：小窗拖动 / 缩放 / 长按复位正常；多任务面板在 100% 与缩小状态下均完整
   落在车机画面区域内，列数在 3 / 2 之间自适应；点击图标能切换车机前台任务；
