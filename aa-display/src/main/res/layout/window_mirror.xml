@@ -1,138 +1,185 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  手机端镜像窗：MIUI 小窗风格。
+  - 窗口本身是 WRAP_CONTENT 的浮窗，不再铺满全屏、不再画遮罩，卡片外的触摸
+    直接落回底下的应用；
+  - 顶栏 ll_mirror_top_bar 与底部导航条 rl_mirror_nav 都是拖动区，用于整体移动；
+  - 右下角 iv_resize 拖动等比缩放，长按恢复默认大小；
+  - 多任务面板 ll_recent_task 叠在车机画面上方，不再占用全屏。
+  id（cv_app / sv_mirror / ll_mirror_top_bar / rl_mirror_nav / iv_resize / ib_close /
+  ll_recent_task / rv_recent_task_left,right 等）被 DisplayWindow 直接引用，勿改名。
+  根布局留 @dimen/mirror_window_shadow_pad 的 padding 供卡片阴影绘制。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:fitsSystemWindows="false">
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:fitsSystemWindows="false"
+    android:padding="@dimen/mirror_window_shadow_pad">
 
-    <RelativeLayout
-        android:id="@+id/rl_layout"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#4D000000"
-        android:fitsSystemWindows="false">
-
-        <View
-            android:id="@+id/v_height_umbrella1"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_alignParentTop="true"
-            android:layout_above="@id/cv_app"
-            android:visibility="visible"
-            tools:visibility="gone"
-            />
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cv_app"
+        style="@style/Widget.Material3.CardView.Filled"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:cardBackgroundColor="?colorPrimaryContainer"
+        app:cardCornerRadius="@dimen/mirror_card_radius"
+        app:cardElevation="@dimen/mirror_card_elevation">
 
         <LinearLayout
-            android:id="@+id/ll_recent_task"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_alignParentTop="true"
-            android:layout_above="@id/cv_app"
-            android:background="#59000000"
-            android:visibility="gone"
-            tools:visibility="visible">
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rv_recent_task_left"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                app:layoutManager="LinearLayoutManager"
-                tools:context=".ui.aa.fragment.AaRecentTaskFragment"
-                tools:listitem="@layout/recent_task" />
-
-            <View
-                android:layout_width="1dp"
-                android:layout_height="match_parent"
-                android:background="?colorOnPrimaryContainer"
-                />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rv_recent_task_right"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                app:layoutManager="LinearLayoutManager"
-                tools:context=".ui.aa.fragment.AaRecentTaskFragment"
-                tools:listitem="@layout/recent_task" />
-        </LinearLayout>
-
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/cv_app"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_above="@id/v_height_umbrella2"
-            style="@style/Widget.Material3.CardView.Elevated"
-            app:cardBackgroundColor="?colorPrimaryContainer"
-            app:cardCornerRadius="4dp"
-            app:cardElevation="20dp">
+            android:orientation="vertical">
 
+            <!-- 顶栏：拖动即移动整个小窗 -->
             <RelativeLayout
+                android:id="@+id/ll_mirror_top_bar"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/mirror_top_bar_height"
+                android:paddingHorizontal="10dp">
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/tv_virtual_display_info"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true"
+                    android:layout_centerVertical="true"
+                    android:alpha="0.5"
+                    android:textColor="?colorOnPrimaryContainer"
+                    android:textSize="11sp"
+                    tools:text="800*480,160" />
+                <View
+                    android:id="@+id/v_drag_pill"
+                    android:layout_width="@dimen/mirror_drag_pill_width"
+                    android:layout_height="@dimen/mirror_drag_pill_height"
+                    android:layout_centerInParent="true"
+                    android:alpha="0.3"
+                    android:background="@drawable/bg_drag_pill" />
+
+                <ImageButton
+                    android:id="@+id/ib_close"
+                    android:layout_width="@dimen/mirror_top_btn_size"
+                    android:layout_height="@dimen/mirror_top_btn_size"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"
+                    android:background="@drawable/bg_window_btn"
+                    android:contentDescription="@string/mirror_close"
+                    android:padding="6dp"
+                    android:src="@drawable/ic_close_24"
+                    app:tint="?colorOnPrimaryContainer" />
+            </RelativeLayout>
+            <!-- 车机画面 + 叠在上面的多任务面板 -->
+            <FrameLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content">
 
                 <SurfaceView
                     android:id="@+id/sv_mirror"
-                    android:layout_width="match_parent"
+                    android:layout_width="800px"
                     android:layout_height="480px" />
 
-                <RelativeLayout
+                <!--
+                  尺寸由 DisplayWindow.updateRecentTaskPanelSize() 按 sv_mirror 的
+                  实际像素写入：这里若写 match_parent，FrameLayout 在 wrap_content
+                  测量时会先按 AT_MOST 量一遍 RecyclerView，把卡片撑到比车机画面还高，
+                  面板就会溢出小窗（表现为“错位”）。
+                -->
+                <LinearLayout
+                    android:id="@+id/ll_recent_task"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_below="@id/sv_mirror"
-                    android:layout_alignEnd="@id/sv_mirror"
-                    android:layout_alignParentStart="true"
-                    android:alpha="0.8">
+                    android:background="@color/window_recent_scrim"
+                    android:visibility="gone"
+                    tools:visibility="visible">
 
-                    <ImageButton
-                        android:id="@+id/ib_back"
-                        android:layout_width="@dimen/notification_large_icon_width"
-                        android:layout_height="@dimen/notification_large_icon_height"
-                        android:layout_toStartOf="@id/ib_home"
-                        android:background="?android:attr/selectableItemBackground"
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/rv_recent_task_left"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:clipToPadding="false"
                         android:padding="4dp"
-                        android:src="@drawable/ic_arrow_back_24"
-                        app:tint="?colorOnPrimaryContainer" />
+                        app:layoutManager="androidx.recyclerview.widget.GridLayoutManager"
+                        tools:context=".ui.aa.fragment.AaRecentTaskFragment"
+                        tools:listitem="@layout/recent_task_icon" />
 
-                    <ImageButton
-                        android:id="@+id/ib_home"
-                        android:layout_width="@dimen/notification_large_icon_width"
-                        android:layout_height="@dimen/notification_large_icon_height"
-                        android:layout_marginStart="4dp"
-                        android:layout_marginEnd="4dp"
-                        android:layout_centerInParent="true"
-                        android:background="?android:attr/selectableItemBackground"
+                    <View
+                        android:layout_width="0.5dp"
+                        android:layout_height="match_parent"
+                        android:alpha="0.3"
+                        android:background="?colorOnPrimaryContainer" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/rv_recent_task_right"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:clipToPadding="false"
                         android:padding="4dp"
-                        android:src="@drawable/ic_home_24"
-                        app:tint="?colorOnPrimaryContainer" />
+                        app:layoutManager="androidx.recyclerview.widget.GridLayoutManager"
+                        tools:context=".ui.aa.fragment.AaRecentTaskFragment"
+                        tools:listitem="@layout/recent_task_icon" />
+                </LinearLayout>
+            </FrameLayout>
+            <!-- 底部导航条：空白处拖动同样移动窗口；右下角是缩放把手 -->
+            <RelativeLayout
+                android:id="@+id/rl_mirror_nav"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp">
 
-                    <ImageButton
-                        android:id="@+id/ib_recent_task"
-                        android:layout_width="@dimen/notification_large_icon_width"
-                        android:layout_height="@dimen/notification_large_icon_height"
-                        android:layout_toEndOf="@id/ib_home"
-                        android:background="?android:attr/selectableItemBackground"
-                        android:padding="4dp"
-                        android:src="@drawable/ic_fullscreen_24"
-                        app:tint="?colorOnPrimaryContainer" />
+                <ImageButton
+                    android:id="@+id/ib_back"
+                    android:layout_width="@dimen/mirror_nav_btn_size"
+                    android:layout_height="@dimen/mirror_nav_btn_size"
+                    android:layout_toStartOf="@id/ib_home"
+                    android:background="@drawable/bg_window_btn"
+                    android:contentDescription="@string/mirror_back"
+                    android:padding="@dimen/mirror_nav_btn_padding"
+                    android:src="@drawable/ic_arrow_back_24"
+                    app:tint="?colorOnPrimaryContainer" />
 
-                    <TextView
-                        android:id="@+id/tv_virtual_display_info"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_alignParentEnd="true"
-                        android:text="800*480,160"
-                        />
-                </RelativeLayout>
+                <ImageButton
+                    android:id="@+id/ib_home"
+                    android:layout_width="@dimen/mirror_nav_btn_size"
+                    android:layout_height="@dimen/mirror_nav_btn_size"
+                    android:layout_centerInParent="true"
+                    android:layout_marginStart="10dp"
+                    android:layout_marginEnd="10dp"
+                    android:background="@drawable/bg_window_btn"
+                    android:contentDescription="@string/mirror_home"
+                    android:padding="@dimen/mirror_nav_btn_padding"
+                    android:src="@drawable/ic_home_24"
+                    app:tint="?colorOnPrimaryContainer" />
+
+                <ImageButton
+                    android:id="@+id/ib_recent_task"
+                    android:layout_width="@dimen/mirror_nav_btn_size"
+                    android:layout_height="@dimen/mirror_nav_btn_size"
+                    android:layout_toEndOf="@id/ib_home"
+                    android:background="@drawable/bg_window_btn"
+                    android:contentDescription="@string/mirror_recent_task"
+                    android:padding="@dimen/mirror_nav_btn_padding"
+                    android:src="@drawable/ic_fullscreen_24"
+                    app:tint="?colorOnPrimaryContainer" />
+
+                <ImageView
+                    android:id="@+id/iv_resize"
+                    android:layout_width="@dimen/mirror_resize_size"
+                    android:layout_height="@dimen/mirror_resize_size"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"
+                    android:alpha="0.6"
+                    android:background="@drawable/bg_window_btn"
+                    android:contentDescription="@string/mirror_resize"
+                    android:padding="7dp"
+                    android:src="@drawable/ic_resize_24"
+                    app:tint="?colorOnPrimaryContainer" />
             </RelativeLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <View
-            android:id="@+id/v_height_umbrella2"
-            android:layout_width="match_parent"
-            android:layout_height="50dp"
-            android:layout_alignParentBottom="true"
-            />
-    </RelativeLayout>
-</RelativeLayout>
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+</FrameLayout>
