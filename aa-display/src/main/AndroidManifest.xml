@@ -46,6 +46,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".ui.setting.SettingsActivity"
+            android:exported="false"
+            android:label="@string/more_settings_title"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
         <service
             android:name=".service.AaActivityService"
             android:enabled="true"

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  miuix 风格的偏好项：背景透明（卡片由 MiuixCardDecoration 绘制），
+  行高舒展、标题 16sp、副标题 13sp 灰字。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?android:attr/selectableItemBackground"
+    android:baselineAligned="false"
+    android:clipToPadding="false"
+    android:gravity="center_vertical"
+    android:minHeight="60dp"
+    android:paddingStart="18dp"
+    android:paddingEnd="18dp">
+
+    <include layout="@layout/m3_icon_frame" />
+
+    <RelativeLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:paddingTop="14dp"
+        android:paddingBottom="14dp">
+
+        <TextView
+            android:id="@android:id/title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="marquee"
+            android:maxLines="2"
+            android:textColor="@color/miuix_text_primary"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@android:id/summary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@android:id/title"
+            android:layout_alignStart="@android:id/title"
+            android:layout_marginTop="2dp"
+            android:lineSpacingExtra="1dp"
+            android:maxLines="10"
+            android:textAlignment="viewStart"
+            android:textColor="@color/miuix_text_secondary"
+            android:textSize="13sp" />
+    </RelativeLayout>
+
+    <LinearLayout
+        android:id="@android:id/widget_frame"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:gravity="end|center_vertical"
+        android:orientation="vertical"
+        android:paddingStart="14dp"
+        android:paddingEnd="0dp" />
+</LinearLayout>

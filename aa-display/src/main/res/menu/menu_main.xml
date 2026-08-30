@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<menu xmlns:android="http://schemas.android.com/apk/res/android">
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/settings"
+        android:icon="@drawable/ic_settings_24"
+        android:title="@string/menu_settings"
+        app:showAsAction="ifRoom" />
     <item
         android:id="@+id/github"
         android:title="@string/menu_github"
-        android:showAsAction="never" />
+        app:showAsAction="never" />
 </menu>

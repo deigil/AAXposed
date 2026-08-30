@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  miuix 风格的分组标题：在卡片外侧、灰色小字。
+  tag 供 MiuixCardDecoration 识别“这一行不是卡片内容”。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:baselineAligned="false"
+    android:gravity="center_vertical"
+    android:paddingStart="14dp"
+    android:paddingEnd="14dp"
+    android:paddingTop="22dp"
+    android:paddingBottom="6dp"
+    android:tag="miuix_category">
+
+    <RelativeLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1">
+
+        <TextView
+            android:id="@android:id/title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-medium"
+            android:textAlignment="viewStart"
+            android:textColor="@color/miuix_text_secondary"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@android:id/summary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@android:id/title"
+            android:layout_alignStart="@android:id/title"
+            android:maxLines="10"
+            android:textAlignment="viewStart"
+            android:textColor="@color/miuix_text_secondary"
+            android:textSize="12sp" />
+    </RelativeLayout>
+</LinearLayout>

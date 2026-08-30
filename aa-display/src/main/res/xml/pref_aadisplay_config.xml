@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <!-- ============ 投屏显示 ============ -->
+    <PreferenceCategory
+        app:key="CategoryDisplay"
+        app:title="@string/pref_category_display"
+        app:iconSpaceReserved="false">
+
+        <!-- 见 AaVirtualDisplayAdapter.onConnected / AADisplayConfig.DisplayImePolicy。
+             IntConfig 内部按 String 读写，所以 entryValues 用字符串。 -->
+        <ListPreference
+            app:key="DisplayImePolicy"
+            app:defaultValue="1"
+            app:title="@string/pref_ime_policy_title"
+            app:entries="@array/ime_policy_keys"
+            app:entryValues="@array/ime_policy_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <rikka.material.preference.MaterialSwitchPreference
+            app:key="HideAaUiControls"
+            app:defaultValue="true"
+            app:title="@string/pref_hide_aa_ui_title"
+            app:summary="@string/pref_hide_aa_ui_summary"
+            app:iconSpaceReserved="false" />
+
+        <rikka.material.preference.MaterialSwitchPreference
+            app:key="ForceRightAngle"
+            app:defaultValue="true"
+            app:title="@string/pref_force_right_angle_title"
+            app:summary="@string/pref_force_right_angle_summary"
+            app:iconSpaceReserved="false" />
+
+        <rikka.material.preference.MaterialSwitchPreference
+            app:key="CloseLauncherDashboard"
+            app:defaultValue="true"
+            app:title="@string/pref_close_launcher_dashboard_title"
+            app:summary="@string/pref_close_launcher_dashboard_summary"
+            app:iconSpaceReserved="false" />
+
+        <EditTextPreference
+            android:inputType="number"
+            app:key="VirtualDisplayDpi"
+            app:title="@string/pref_virtual_display_dpi_title"
+            app:dialogMessage="@string/pref_virtual_display_dpi_summary"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <EditTextPreference
+            android:inputType="number"
+            app:key="AndroidAutoDpi"
+            app:title="@string/pref_android_auto_dpi_title"
+            app:dialogMessage="@string/pref_android_auto_dpi_summary"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+    </PreferenceCategory>
+
+    <!-- ============ 应用投屏 ============ -->
+    <!-- 这两项不是纯配置：改动时要用 root 去 pm enable/disable 组件，
+         由 SettingsFragment 的 OnPreferenceChangeListener 落实，失败就不写入。 -->
+    <PreferenceCategory
+        app:key="CategoryAppProjection"
+        app:title="@string/pref_category_app_projection"
+        app:iconSpaceReserved="false">
+
+        <rikka.material.preference.MaterialSwitchPreference
+            app:key="DisableWazeOnAa"
+            app:defaultValue="false"
+            app:title="@string/disable_waze_on_aa_title"
+            app:summary="@string/disable_waze_on_aa_summary"
+            app:iconSpaceReserved="false" />
+
+        <rikka.material.preference.MaterialSwitchPreference
+            app:key="DisableGoogleMapsOnAa"
+            app:defaultValue="false"
+            app:title="@string/disable_google_maps_on_aa_title"
+            app:summary="@string/disable_google_maps_on_aa_summary"
+            app:iconSpaceReserved="false" />
+
+    </PreferenceCategory>
+
+    <!-- ============ 兼容性修复 ============ -->
+    <PreferenceCategory
+        app:key="CategoryFix"
+        app:title="@string/pref_category_fix"
+        app:iconSpaceReserved="false">
+
+        <!-- 见 EyeCareSuspender -->
+        <rikka.material.preference.MaterialSwitchPreference
+            app:key="SuspendEyeCareOnProjection"
+            app:defaultValue="true"
+            app:title="@string/pref_suspend_eye_care_title"
+            app:summary="@string/pref_suspend_eye_care_summary"
+            app:iconSpaceReserved="false" />
+
+        <!-- 见 GboardImeHook -->
+        <rikka.material.preference.MaterialSwitchPreference
+            app:key="FixGboardFloatingIme"
+            app:defaultValue="true"
+            app:title="@string/pref_fix_gboard_ime_title"
+            app:summary="@string/pref_fix_gboard_ime_summary"
+            app:iconSpaceReserved="false" />
+
+    </PreferenceCategory>
+
+    <!-- ============ 交互 ============ -->
+    <PreferenceCategory
+        app:key="CategoryInteract"
+        app:title="@string/pref_category_interact"
+        app:iconSpaceReserved="false">
+
+        <EditTextPreference
+            android:inputType="text"
+            app:singleLineTitle="true"
+            app:key="VoiceAssistShell"
+            app:defaultValue="am start com.miui.voiceassist/com.xiaomi.voiceassistant.CTAAlertActivity"
+            app:title="@string/pref_voice_assist_shell_title"
+            app:dialogMessage="@string/pref_voice_assist_shell_summary"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <rikka.material.preference.MaterialSwitchPreference
+            app:key="ScreenOffReplaceLockScreen"
+            app:defaultValue="false"
+            app:title="@string/pref_screen_off_replace_lock_title"
+            app:summary="@string/pref_screen_off_replace_lock_summary"
+            app:iconSpaceReserved="false" />
+
+    </PreferenceCategory>
+
+    <!-- ============ Shell 命令（nitsuya 分支的启动/退出脚本）============ -->
+    <PreferenceCategory
+        app:key="CategoryShell"
+        app:title="@string/pref_category_shell"
+        app:iconSpaceReserved="false">
+
+        <EditTextPreference
+            android:inputType="textMultiLine"
+            app:key="CreateVirtualDisplayBefore"
+            app:title="@string/pref_create_before_title"
+            app:dialogMessage="@string/pref_create_before_summary"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <EditTextPreference
+            android:inputType="textMultiLine"
+            app:key="DestroyVirtualDisplayAfter"
+            app:title="@string/pref_destroy_after_title"
+            app:dialogMessage="@string/pref_destroy_after_summary"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+    </PreferenceCategory>
+
+    <!-- ============ Android Auto 属性覆盖 ============ -->
+    <PreferenceCategory
+        app:key="CategoryAndroidAuto"
+        app:title="@string/pref_category_aa"
+        app:iconSpaceReserved="false">
+
+        <EditTextPreference
+            android:inputType="textMultiLine"
+            app:key="ComGoogleAndroidProjectionGearheadProps"
+            app:title="@string/pref_gearhead_props_title"
+            app:dialogMessage="@string/pref_props_summary"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <EditTextPreference
+            android:inputType="textMultiLine"
+            app:key="ComGoogleAndroidGmsCarProps"
+            app:title="@string/pref_gms_car_props_title"
+            app:dialogMessage="@string/pref_props_summary"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+    </PreferenceCategory>
+
+</PreferenceScreen>

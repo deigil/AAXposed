@@ -4,38 +4,38 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:clipToPadding="false"
+    android:fillViewport="true"
+    android:scrollbars="none">
 
     <LinearLayout
         android:id="@+id/ll"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingHorizontal="@dimen/m3_appbar_expanded_title_margin_horizontal"
-        android:paddingVertical="?dialogPreferredPadding"
-        tools:ignore="PrivateResource">
+        android:paddingHorizontal="16dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="28dp">
 
+        <!-- 状态卡：miuix 里这类“大色块提示”是圆角矩形 + 图标在左 -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/mcv_status"
-            style="@style/Widget.Material3.CardView.Elevated"
+            style="@style/Miuix.Card.Status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:outlineAmbientShadowColor="?colorPrimary"
-            android:outlineSpotShadowColor="?colorPrimary"
             android:stateListAnimator="@null"
-            app:cardBackgroundColor="?colorPrimary"
-            app:cardElevation="6dp"
-            app:cardPreventCornerOverlap="false">
+            app:cardBackgroundColor="?colorPrimary">
 
             <RelativeLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="?dialogPreferredPadding">
+                android:paddingHorizontal="20dp"
+                android:paddingVertical="18dp">
 
                 <ImageView
                     android:id="@+id/iv_icon"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
                     android:layout_centerVertical="true"
                     app:srcCompat="@drawable/ic_round_check_circle_24"
                     app:tint="?colorOnPrimary"
@@ -45,103 +45,135 @@
                     android:id="@+id/tv_active"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="24dp"
+                    android:layout_marginStart="18dp"
                     android:layout_toEndOf="@id/iv_icon"
                     android:fontFamily="sans-serif-medium"
-                    android:textAppearance="?textAppearanceTitleMedium"
                     android:textColor="?colorOnPrimary"
-                    android:textSize="16sp"
-                    tools:text="Activated" />
+                    android:textSize="17sp"
+                    tools:text="模块已激活" />
 
                 <com.google.android.material.textview.MaterialTextView
                     android:id="@+id/tv_version"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_below="@id/tv_active"
-                    android:layout_marginStart="24dp"
-                    android:layout_marginTop="2dp"
+                    android:layout_marginStart="18dp"
+                    android:layout_marginTop="3dp"
                     android:layout_toEndOf="@id/iv_icon"
-                    android:textAppearance="?textAppearanceBodyMedium"
+                    android:alpha="0.85"
                     android:textColor="?colorOnPrimary"
-                    tools:text="0.23#16.6-r1" />
-
+                    android:textSize="13sp"
+                    tools:text="0.24#17.2-e1\nAndroid Auto 17.3.662854" />
             </RelativeLayout>
         </com.google.android.material.card.MaterialCardView>
 
+        <!-- 设备信息 -->
+        <com.google.android.material.textview.MaterialTextView
+            style="@style/Miuix.GroupTitle"
+            android:text="@string/section_device_info" />
+
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/mcv_info"
+            style="@style/Miuix.Card"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp">
+            android:layout_height="wrap_content">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="?dialogPreferredPadding">
-
-                <com.google.android.material.textview.MaterialTextView
-                    style="@style/DeviceInfoDialogLabel"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/info_root_privilege" />
-
-                <com.google.android.material.textview.MaterialTextView
-                    android:id="@+id/root_privilege"
-                    style="@style/DeviceInfoDialogValue"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <com.google.android.material.textview.MaterialTextView
-                    style="@style/DeviceInfoDialogLabel"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/info_system_version" />
-
-                <com.google.android.material.textview.MaterialTextView
-                    android:id="@+id/system_version"
-                    style="@style/DeviceInfoDialogValue"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-            </LinearLayout>
-
-        </com.google.android.material.card.MaterialCardView>
-
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/mcv_controls"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="?dialogPreferredPadding">
+                android:orientation="vertical">
 
                 <RelativeLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content">
+                    android:layout_height="wrap_content"
+                    android:paddingHorizontal="18dp"
+                    android:paddingVertical="15dp">
+
+                    <com.google.android.material.textview.MaterialTextView
+                        style="@style/Miuix.ItemTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_centerVertical="true"
+                        android:text="@string/info_root_privilege" />
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/root_privilege"
+                        style="@style/Miuix.ItemValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentEnd="true"
+                        android:layout_centerVertical="true"
+                        tools:text="已获取" />
+                </RelativeLayout>
+
+                <View style="@style/Miuix.Divider" />
+
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingHorizontal="18dp"
+                    android:paddingVertical="15dp">
+
+                    <com.google.android.material.textview.MaterialTextView
+                        style="@style/Miuix.ItemTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_centerVertical="true"
+                        android:text="@string/info_system_version" />
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/system_version"
+                        style="@style/Miuix.ItemValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentEnd="true"
+                        android:layout_centerVertical="true"
+                        tools:text="15 (API 35)" />
+                </RelativeLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 常用设置 -->
+        <com.google.android.material.textview.MaterialTextView
+            style="@style/Miuix.GroupTitle"
+            android:text="@string/section_common_settings" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/mcv_controls"
+            style="@style/Miuix.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingHorizontal="18dp"
+                    android:paddingVertical="14dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_centerVertical="true"
                         android:layout_toStartOf="@id/switch_auto_open"
-                        android:orientation="vertical">
+                        android:orientation="vertical"
+                        android:paddingEnd="12dp">
 
                         <com.google.android.material.textview.MaterialTextView
+                            style="@style/Miuix.ItemTitle"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="@string/auto_open_title"
-                            android:textAppearance="?textAppearanceTitleMedium" />
+                            android:text="@string/auto_open_title" />
 
                         <com.google.android.material.textview.MaterialTextView
-                            android:layout_width="wrap_content"
+                            style="@style/Miuix.ItemSummary"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="@string/auto_open_summary"
-                            android:textAppearance="?textAppearanceBodyMedium"
-                            android:textColor="?android:attr/textColorSecondary" />
+                            android:text="@string/auto_open_summary" />
                     </LinearLayout>
 
                     <com.google.android.material.materialswitch.MaterialSwitch
@@ -152,137 +184,79 @@
                         android:layout_centerVertical="true" />
                 </RelativeLayout>
 
-                <RelativeLayout
+                <View style="@style/Miuix.Divider" />
+
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="14dp">
+                    android:orientation="vertical"
+                    android:paddingHorizontal="18dp"
+                    android:paddingTop="14dp"
+                    android:paddingBottom="18dp">
 
-                    <LinearLayout
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/tv_default_home"
+                        style="@style/Miuix.ItemSummary"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_toStartOf="@id/switch_disable_waze_on_aa"
-                        android:orientation="vertical">
+                        android:layout_marginTop="0dp"
+                        tools:text="系统默认桌面：com.miui.home" />
 
-                        <com.google.android.material.textview.MaterialTextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/disable_waze_on_aa_title"
-                            android:textAppearance="?textAppearanceTitleMedium" />
-
-                        <com.google.android.material.textview.MaterialTextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="@string/disable_waze_on_aa_summary"
-                            android:textAppearance="?textAppearanceBodyMedium"
-                            android:textColor="?android:attr/textColorSecondary" />
-                    </LinearLayout>
-
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/switch_disable_waze_on_aa"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_alignParentEnd="true"
-                        android:layout_centerVertical="true" />
-                </RelativeLayout>
-
-                <RelativeLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="14dp">
-
-                    <LinearLayout
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/til_launcher_package"
+                        style="@style/Miuix.TextInputLayout"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_toStartOf="@id/switch_disable_google_maps_on_aa"
-                        android:orientation="vertical">
+                        android:layout_marginTop="12dp"
+                        android:hint="@string/default_launch_package_title"
+                        app:helperText="@string/default_launch_package_summary">
 
-                        <com.google.android.material.textview.MaterialTextView
-                            android:layout_width="wrap_content"
+                        <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                            android:id="@+id/actv_launcher_package"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="@string/disable_google_maps_on_aa_title"
-                            android:textAppearance="?textAppearanceTitleMedium" />
+                            android:imeOptions="actionNext"
+                            android:inputType="none"
+                            android:maxLines="1"
+                            android:singleLine="true" />
+                    </com.google.android.material.textfield.TextInputLayout>
 
-                        <com.google.android.material.textview.MaterialTextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="@string/disable_google_maps_on_aa_summary"
-                            android:textAppearance="?textAppearanceBodyMedium"
-                            android:textColor="?android:attr/textColorSecondary" />
-                    </LinearLayout>
-
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/switch_disable_google_maps_on_aa"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_alignParentEnd="true"
-                        android:layout_centerVertical="true" />
-                </RelativeLayout>
-
-                <com.google.android.material.textview.MaterialTextView
-                    android:id="@+id/tv_default_home"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="14dp"
-                    android:textAppearance="?textAppearanceBodyMedium"
-                    android:textColor="?android:attr/textColorSecondary"
-                    tools:text="Default Home Launcher: com.example.launcher" />
-
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/til_launcher_package"
-                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:hint="@string/default_launch_package_title"
-                    app:helperText="@string/default_launch_package_summary">
-
-                    <com.google.android.material.textfield.MaterialAutoCompleteTextView
-                        android:id="@+id/actv_launcher_package"
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/tv_package_validation"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:imeOptions="actionNext"
-                        android:inputType="none"
-                        android:maxLines="1"
-                        android:singleLine="true" />
-                </com.google.android.material.textfield.TextInputLayout>
+                        android:layout_marginTop="6dp"
+                        android:textSize="12sp"
+                        android:visibility="gone"
+                        tools:text="该应用可以安全用于投屏"
+                        tools:visibility="visible" />
 
-                <com.google.android.material.textview.MaterialTextView
-                    android:id="@+id/tv_package_validation"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:textAppearance="?textAppearanceBodySmall"
-                    android:visibility="gone"
-                    tools:text="Launch package is safe to use"
-                    tools:visibility="visible" />
-
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/til_delay_destroy_time"
-                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:hint="@string/delay_destroy_time_title">
-
-                    <com.google.android.material.textfield.MaterialAutoCompleteTextView
-                        android:id="@+id/actv_delay_destroy_time"
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/til_delay_destroy_time"
+                        style="@style/Miuix.TextInputLayout"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:imeOptions="actionNext"
-                        android:inputType="none"
-                        android:maxLines="1"
-                        android:singleLine="true" />
-                </com.google.android.material.textfield.TextInputLayout>
+                        android:layout_marginTop="14dp"
+                        android:hint="@string/delay_destroy_time_title">
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_save"
-                    style="@style/Widget.Material3.Button"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="@string/save_settings" />
+                        <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                            android:id="@+id/actv_delay_destroy_time"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:imeOptions="actionNext"
+                            android:inputType="none"
+                            android:maxLines="1"
+                            android:singleLine="true" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_save"
+                        style="@style/Miuix.Button"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="18dp"
+                        android:text="@string/save_settings" />
+                </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

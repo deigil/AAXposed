@@ -27,10 +27,9 @@ import io.github.nitsuya.aa.display.BuildConfig
 import io.github.nitsuya.aa.display.CoreApi
 import io.github.nitsuya.aa.display.R
 import io.github.nitsuya.aa.display.databinding.ActivityMainBinding
+import io.github.nitsuya.aa.display.ui.setting.SettingsActivity
 import io.github.nitsuya.aa.display.util.AADisplayConfig
-import io.github.nitsuya.aa.display.util.GoogleMapsOnAaManager
 import io.github.nitsuya.aa.display.util.SharedPreferencesAccess
-import io.github.nitsuya.aa.display.util.WazeOnAaManager
 import io.github.nitsuya.template.bases.getAttr
 
 class MainActivity :
@@ -42,6 +41,7 @@ class MainActivity :
     MenuProvider {
     companion object {
         const val TAG = "AADisplay_MainActivity"
+        private const val AA_PACKAGE = "com.google.android.projection.gearhead"
     }
 
     private data class LauncherOption(
@@ -73,8 +73,6 @@ class MainActivity :
     private var savedLauncherPackage: String? = null
     private var savedDelayDestroyTime: Int = 180
     private var savedAutoOpen: Boolean = false
-    private var savedDisableWazeOnAa: Boolean = false
-    private var savedDisableGoogleMapsOnAa: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         ActivityMainBinding.inflate(LayoutInflater.from(this))
@@ -96,7 +94,7 @@ class MainActivity :
             0L -> {
                 baseBinding.ivIcon.setImageResource(R.drawable.ic_error_outline_24)
                 baseBinding.tvActive.setText(R.string.not_activated)
-                baseBinding.tvVersion.text = ""
+                baseBinding.tvVersion.text = aaVersionText()
                 val colorError = android.R.attr.colorError
                 val colorOnError = theme.getAttr(com.google.android.material.R.attr.colorOnError).data
                 baseBinding.mcvStatus.setCardBackgroundColor(colorError)
@@ -109,14 +107,15 @@ class MainActivity :
             BuildConfig.BUILD_TIME -> {
                 baseBinding.ivIcon.setImageResource(R.drawable.ic_round_check_circle_24)
                 baseBinding.tvActive.setText(R.string.activated)
-                baseBinding.tvVersion.text = CoreApi.versionName
+                baseBinding.tvVersion.text =
+                    "${CoreApi.versionName}\n${aaVersionText()}"
             }
 
             else -> {
                 baseBinding.ivIcon.setImageResource(R.drawable.ic_warning_amber_24)
                 baseBinding.tvActive.setText(R.string.need_reboot)
                 baseBinding.tvVersion.text =
-                    "system: ${CoreApi.versionName}\nmodule: ${BuildConfig.VERSION_NAME}"
+                    "${BuildConfig.VERSION_NAME}\n${aaVersionText()}"
                 baseBinding.mcvStatus.setCardBackgroundColor(
                     MaterialColors.harmonizeWithPrimary(this, getColor(R.color.color_warning))
                 )
@@ -137,7 +136,9 @@ class MainActivity :
         } else {
             baseBinding.systemVersion.text = "${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
         }
-        baseBinding.rootPrivilege.text = if (Shell.getShell().isRoot) "YES" else "NO"
+        baseBinding.rootPrivilege.setText(
+            if (Shell.getShell().isRoot) R.string.info_yes else R.string.info_no
+        )
         refreshSettingControls()
     }
 
@@ -146,15 +147,40 @@ class MainActivity :
         refreshSettingControls()
     }
 
+    /**
+     * 状态卡第二行显示手机上装的 Android Auto 版本。
+     *
+     * gearhead 的 versionName 形如 17.3.662854-release，尾巴上的 channel 后缀对用户没
+     * 意义，截掉只留版本号。包名已经写在 manifest 的 <queries> 里，所以 targetSdk 30+
+     * 的包可见性限制不会挡住这次查询。
+     */
+    private fun aaVersionText(): String {
+        val versionName = try {
+            packageManager.getPackageInfo(AA_PACKAGE, 0).versionName
+        } catch (_: PackageManager.NameNotFoundException) {
+            null
+        }
+        return if (versionName.isNullOrBlank()) {
+            getString(R.string.status_aa_not_installed)
+        } else {
+            getString(R.string.status_aa_version, versionName.substringBefore('-'))
+        }
+    }
+
     override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
         menuInflater.inflate(R.menu.menu_main, menu)
     }
 
     override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
         return when (menuItem.itemId) {
+            R.id.settings -> {
+                openAdvancedSettings()
+                true
+            }
+
             R.id.github -> {
                 startActivity(Intent(Intent.ACTION_VIEW).apply {
-                    data = "https://github.com/Stashboy/AADisplay".toUri()
+                    data = "https://github.com/erxm/AADisplay".toUri()
                 })
                 true
             }
@@ -163,16 +189,12 @@ class MainActivity :
         }
     }
 
+    private fun openAdvancedSettings() {
+        startActivity(Intent(this, SettingsActivity::class.java))
+    }
+
     private fun setupSettingControls() {
         baseBinding.switchAutoOpen.setOnCheckedChangeListener { _, _ ->
-            updateSaveButtonState()
-        }
-
-        baseBinding.switchDisableWazeOnAa.setOnCheckedChangeListener { _, _ ->
-            updateSaveButtonState()
-        }
-
-        baseBinding.switchDisableGoogleMapsOnAa.setOnCheckedChangeListener { _, _ ->
             updateSaveButtonState()
         }
 
@@ -233,13 +255,9 @@ class MainActivity :
 
     private fun refreshSettingControls() {
         savedAutoOpen = AADisplayConfig.AutoOpen.get(appConfig)
-        savedDisableWazeOnAa = AADisplayConfig.DisableWazeOnAa.get(appConfig)
-        savedDisableGoogleMapsOnAa = AADisplayConfig.DisableGoogleMapsOnAa.get(appConfig)
         savedLauncherPackage = AADisplayConfig.LauncherPackage.get(appConfig)?.trim().orEmpty()
         savedDelayDestroyTime = AADisplayConfig.DelayDestroyTime.get(appConfig)
         baseBinding.switchAutoOpen.isChecked = savedAutoOpen
-        baseBinding.switchDisableWazeOnAa.isChecked = savedDisableWazeOnAa
-        baseBinding.switchDisableGoogleMapsOnAa.isChecked = savedDisableGoogleMapsOnAa
 
         detectLauncherEnvironment()
         bindLauncherDropdown()
@@ -498,31 +516,9 @@ class MainActivity :
 
         val launcherPackage = resolveSelectedLauncherPackage() ?: return
         val delay = resolveSelectedDelaySeconds() ?: return
-        val disableWazeOnAa = baseBinding.switchDisableWazeOnAa.isChecked
-        val disableGoogleMapsOnAa = baseBinding.switchDisableGoogleMapsOnAa.isChecked
-        if (disableWazeOnAa != savedDisableWazeOnAa) {
-            val applied = WazeOnAaManager.apply(disableWazeOnAa)
-            if (!applied) {
-                Toast.makeText(this, getString(R.string.disable_waze_on_aa_apply_failed), Toast.LENGTH_SHORT).show()
-                baseBinding.switchDisableWazeOnAa.isChecked = savedDisableWazeOnAa
-                updateSaveButtonState()
-                return
-            }
-        }
-        if (disableGoogleMapsOnAa != savedDisableGoogleMapsOnAa) {
-            val applied = GoogleMapsOnAaManager.apply(disableGoogleMapsOnAa)
-            if (!applied) {
-                Toast.makeText(this, getString(R.string.disable_google_maps_on_aa_apply_failed), Toast.LENGTH_SHORT).show()
-                baseBinding.switchDisableGoogleMapsOnAa.isChecked = savedDisableGoogleMapsOnAa
-                updateSaveButtonState()
-                return
-            }
-        }
 
         val settingsSaved = appConfig.edit()
             .putBoolean(AADisplayConfig.AutoOpen.key, baseBinding.switchAutoOpen.isChecked)
-            .putBoolean(AADisplayConfig.DisableWazeOnAa.key, disableWazeOnAa)
-            .putBoolean(AADisplayConfig.DisableGoogleMapsOnAa.key, disableGoogleMapsOnAa)
             .putString(AADisplayConfig.LauncherPackage.key, launcherPackage)
             .putString(AADisplayConfig.HomePackage.key, launcherPackage)
             .putString(AADisplayConfig.DelayDestroyTime.key, delay.toString())
@@ -536,8 +532,6 @@ class MainActivity :
         }
 
         savedAutoOpen = baseBinding.switchAutoOpen.isChecked
-        savedDisableWazeOnAa = disableWazeOnAa
-        savedDisableGoogleMapsOnAa = disableGoogleMapsOnAa
         savedLauncherPackage = launcherPackage
         savedDelayDestroyTime = delay
         Toast.makeText(this, getString(R.string.settings_saved_successfully), Toast.LENGTH_SHORT).show()
@@ -555,13 +549,9 @@ class MainActivity :
 
     private fun hasPendingChanges(): Boolean {
         val currentAutoOpen = baseBinding.switchAutoOpen.isChecked
-        val currentDisableWazeOnAa = baseBinding.switchDisableWazeOnAa.isChecked
-        val currentDisableGoogleMapsOnAa = baseBinding.switchDisableGoogleMapsOnAa.isChecked
         val currentLauncher = resolveSelectedLauncherPackage()
         val currentDelay = resolveSelectedDelaySeconds()
         return currentAutoOpen != savedAutoOpen ||
-            currentDisableWazeOnAa != savedDisableWazeOnAa ||
-            currentDisableGoogleMapsOnAa != savedDisableGoogleMapsOnAa ||
             currentLauncher != savedLauncherPackage ||
             currentDelay != savedDelayDestroyTime
     }
