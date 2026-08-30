@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  多任务面板的「图标模式」条目：只显示应用图标 + 名称，不加载任务快照。
+  手机端小窗用这个布局（快照缩略图会把 wrap_content 的卡片撑爆，而且缩小后根本看不清）；
+  车机端 AaRecentTaskFragment 仍用 @layout/recent_task 的快照模式。
+  id（iv_icon / tv_name）与 recent_task.xml 保持一致，DisplayRecyclerViewAdapter 两套复用。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_recent_task_item"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
+    android:paddingHorizontal="2dp"
+    android:paddingVertical="@dimen/mirror_recent_item_padding">
+
+    <ImageView
+        android:id="@+id/iv_icon"
+        android:layout_width="@dimen/mirror_recent_icon_size"
+        android:layout_height="@dimen/mirror_recent_icon_size"
+        android:contentDescription="@string/mirror_recent_task"
+        android:scaleType="fitCenter"
+        tools:srcCompat="@drawable/ic_round_check_circle_24" />
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/tv_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:maxLines="1"
+        android:textColor="#FFFFFFFF"
+        android:textSize="10sp"
+        tools:text="@string/app_name" />
+</LinearLayout>

@@ -2,18 +2,30 @@ package io.github.nitsuya.aa.display.ui.window
 
 import androidx.recyclerview.widget.RecyclerView
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.TextView
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.view.ViewCompat
 import androidx.recyclerview.widget.ItemTouchHelper
 import io.github.nitsuya.aa.display.CoreApi
 import io.github.nitsuya.aa.display.R
-import io.github.nitsuya.aa.display.databinding.FragmentAaRecentTaskBinding
-import io.github.nitsuya.aa.display.databinding.RecentTaskBinding
 import io.github.nitsuya.aa.display.model.RecentTaskInfo
 
+/**
+ * 多任务列表适配器，两种条目形态：
+ * - 快照模式（[iconMode] = false，车机端 AaRecentTaskFragment）：图标 + 名称 + 任务快照；
+ * - 图标模式（[iconMode] = true，手机端镜像小窗）：只有图标 + 名称。小窗是
+ *   wrap_content 的浮窗，9:16 的快照会把条目撑得比车机画面还高，导致面板溢出卡片、
+ *   看起来像“错位”；而且小窗缩放后快照根本看不清，所以这里直接不加载快照。
+ *
+ * 两套布局都提供 iv_icon / tv_name，快照模式额外有 cl_item / iv_snapshot。
+ */
 class DisplayRecyclerViewAdapter(
       private val recyclerView: RecyclerView
+    , private val iconMode: Boolean = false
     , private val onExit: (() -> Unit)
 ) : RecyclerView.Adapter<DisplayRecyclerViewAdapter.ViewHolder>(){
 
@@ -29,33 +41,32 @@ class DisplayRecyclerViewAdapter(
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        return ViewHolder(
-            RecentTaskBinding.inflate(
-                LayoutInflater.from(parent.context),
-                parent,
-                false
-            )
-        )
+        val layoutId = if (iconMode) R.layout.recent_task_icon else R.layout.recent_task
+        return ViewHolder(LayoutInflater.from(parent.context).inflate(layoutId, parent, false))
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val item = items[position]
-        holder.binding.ivIcon.setImageBitmap(item.logo)
-        holder.binding.tvName.text = "${item.label} [${item.taskId}]"
+        holder.ivIcon.setImageBitmap(item.logo)
+        holder.tvName.text = if (iconMode) item.label else "${item.label} [${item.taskId}]"
 
-        if(recyclerView.id == R.id.rv_recent_task_left){
-            ConstraintSet().apply {
-                clone(holder.binding.clItem)
-                constrainPercentWidth(R.id.iv_snapshot,0.8f)
-                setDimensionRatio(R.id.iv_snapshot,"W,9:16")
-                applyTo(holder.binding.clItem)
+        if (!iconMode) {
+            if(recyclerView.id == R.id.rv_recent_task_left){
+                holder.clItem?.let { clItem ->
+                    ConstraintSet().apply {
+                        clone(clItem)
+                        constrainPercentWidth(R.id.iv_snapshot,0.8f)
+                        setDimensionRatio(R.id.iv_snapshot,"W,9:16")
+                        applyTo(clItem)
+                    }
+                }
             }
+            holder.ivSnapshot?.setImageBitmap(item.snapshot)
         }
-        holder.binding.ivSnapshot.setImageBitmap(item.snapshot)
-        holder.binding.root.setOnClickListener {
+        holder.itemView.setOnClickListener {
             onExit()
         }
-        arrayOf(holder.binding.tvName, holder.binding.ivIcon, holder.binding.ivSnapshot).forEach {
+        listOfNotNull(holder.tvName, holder.ivIcon, holder.ivSnapshot).forEach {
             it.setOnClickListener {
                 CoreApi.moveTaskToFront(item.taskId)
                 onExit()
@@ -92,7 +103,12 @@ class DisplayRecyclerViewAdapter(
         }
     }
 
-    inner class ViewHolder(val binding: RecentTaskBinding): RecyclerView.ViewHolder(binding.root) {}
+    inner class ViewHolder(itemView: View): RecyclerView.ViewHolder(itemView) {
+        val ivIcon: ImageView = itemView.findViewById(R.id.iv_icon)
+        val tvName: TextView = itemView.findViewById(R.id.tv_name)
+        val ivSnapshot: ImageView? = itemView.findViewById(R.id.iv_snapshot)
+        val clItem: ConstraintLayout? = itemView.findViewById(R.id.cl_item)
+    }
 
     inner class ItemTouchHelperCallback: ItemTouchHelper.Callback(){
         override fun getMovementFlags(
@@ -147,7 +163,7 @@ class DisplayRecyclerViewAdapter(
 
         override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
             super.clearView(recyclerView, viewHolder)
-            viewHolder?.itemView?.apply {
+            viewHolder.itemView.apply {
                 ViewCompat.animate(this)
                     .setDuration(200)
                     .scaleX(1f)
