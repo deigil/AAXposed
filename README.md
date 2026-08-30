@@ -39,6 +39,30 @@ Production-ready fork of [Nitsuya/AADisplay](https://github.com/Nitsuya/AADispla
 ./gradlew :aa-display:assembleRelease
 ```
 
+## Remotes / Credits
+
+```
+origin      https://github.com/erxm/AADisplay.git       # this fork
+upstream    https://github.com/Stashboy/AADisplay.git   # fork source
+reference   https://github.com/lagXkjy/AADisplay.git    # reference implementation (push disabled)
+```
+
+The Coolwalk facetbar / media-placeholder chain is imported from the
+`AADisplay-Split-Lite` branch of [lagXkjy/AADisplay](https://github.com/lagXkjy/AADisplay/tree/AADisplay-Split-Lite)
+by **qiang** `<jqiang.hi@163.com>`. The import is a path-restricted cherry-pick onto
+`vendor/coolwalk-import`, merged into `main` — every commit keeps its original author,
+author date, and source SHA. To refresh it:
+
+```bash
+git fetch reference AADisplay-Split-Lite
+git log --oneline main..reference/AADisplay-Split-Lite -- \
+    aa-display/src/main/java/io/github/nitsuya/aa/display/xposed/hook/aa/coolwalk/
+```
+
+Not imported: the custom app selector, Bluetooth keyboard/mouse support, and the
+lyrics/cover sync chain. `AaCoolwalkHuTouchHook` (head-unit touch takeover) is
+intentionally absent — this fork keeps control on the phone-side floating window.
+
 ## License
 
 Inherited from upstream. See [LICENSE](LICENSE).
