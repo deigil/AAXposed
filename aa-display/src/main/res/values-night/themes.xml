@@ -6,9 +6,22 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:enforceStatusBarContrast">false</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="preferenceTheme">@style/PreferenceThemeOverlay.Rikka.Material3</item>
+        <item name="preferenceTheme">@style/PreferenceThemeOverlay.Miuix</item>
         <item name="materialSwitchStyle">@style/Widget.Material3.CompoundButton.MaterialSwitch</item>
+
+        <item name="android:windowBackground">@color/miuix_page_background</item>
+        <item name="colorPrimary">@color/miuix_blue</item>
+        <item name="colorSurface">@color/miuix_card</item>
+        <item name="colorSurfaceContainer">@color/miuix_card</item>
+        <item name="android:textColorPrimary">@color/miuix_text_primary</item>
+        <item name="android:textColorSecondary">@color/miuix_text_secondary</item>
+        <item name="toolbarStyle">@style/Miuix.Toolbar</item>
     </style>
 
-    <style name="Theme.AADisplay.Window" parent="Theme.Material3.DynamicColors.DayNight" />
+    <style name="Theme.AADisplay.Window" parent="Theme.Material3.DayNight">
+        <item name="colorPrimary">@color/miuix_blue</item>
+        <item name="colorPrimaryContainer">@color/window_panel</item>
+        <item name="colorOnPrimaryContainer">@color/window_icon</item>
+        <item name="colorOutline">@color/window_panel_stroke</item>
+    </style>
 </resources>

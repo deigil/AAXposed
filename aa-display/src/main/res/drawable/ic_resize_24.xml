@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 右下角缩放把手：双向对角箭头 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#000000">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M4,4h7v2H7.41l4.3,4.3 -1.41,1.41L6,7.41V11H4V4z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M20,20h-7v-2h3.59l-4.3,-4.3 1.41,-1.41L18,16.59V13h2v7z" />
+</vector>

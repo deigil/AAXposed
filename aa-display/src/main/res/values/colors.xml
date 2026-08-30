@@ -1,3 +1,21 @@
 <resources>
     <color name="color_warning">#FBC02D</color>
+
+    <!-- miuix 风格调色（浅色） -->
+    <color name="miuix_blue">#FF3482FF</color>
+    <color name="miuix_blue_dark">#FF2A6EDB</color>
+    <color name="miuix_page_background">#FFF7F7F9</color>
+    <color name="miuix_card">#FFFFFFFF</color>
+    <color name="miuix_card_pressed">#14000000</color>
+    <color name="miuix_text_primary">#FF191919</color>
+    <color name="miuix_text_secondary">#8A000000</color>
+    <color name="miuix_divider">#14000000</color>
+    <color name="miuix_success">#FF39B54A</color>
+
+    <!-- 悬浮窗 -->
+    <color name="window_scrim">#99000000</color>
+    <color name="window_recent_scrim">#B3000000</color>
+    <color name="window_panel">#F2FFFFFF</color>
+    <color name="window_panel_stroke">#1F000000</color>
+    <color name="window_icon">#FF191919</color>
 </resources>

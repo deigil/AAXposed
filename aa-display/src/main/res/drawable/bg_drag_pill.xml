@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 小窗顶栏中间的拖动指示胶囊 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?colorOnPrimaryContainer" />
+    <corners android:radius="2dp" />
+</shape>

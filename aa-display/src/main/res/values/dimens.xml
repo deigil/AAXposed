@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 悬浮窗（MIUI 风格：胶囊化、圆角大、控件间距舒展） -->
+    <dimen name="window_btn_size">44dp</dimen>
+    <dimen name="window_btn_padding">11dp</dimen>
+    <dimen name="window_btn_gap">2dp</dimen>
+    <dimen name="window_panel_padding">5dp</dimen>
+    <dimen name="window_panel_radius">26dp</dimen>
+    <dimen name="window_handle_radius">22dp</dimen>
+    <dimen name="window_stroke_width">0.5dp</dimen>
+    <dimen name="window_panel_elevation">6dp</dimen>
+    <dimen name="window_destroy_text_size">11sp</dimen>
+
+    <!-- 手机端镜像窗（MIUI 小窗） -->
+    <dimen name="mirror_card_radius">18dp</dimen>
+    <dimen name="mirror_card_elevation">12dp</dimen>
+    <dimen name="mirror_nav_btn_size">48dp</dimen>
+    <dimen name="mirror_nav_btn_padding">12dp</dimen>
+    <!-- 卡片阴影靠根布局 padding 让出空间，否则会被窗口边界裁掉 -->
+    <dimen name="mirror_window_shadow_pad">10dp</dimen>
+    <dimen name="mirror_top_bar_height">34dp</dimen>
+    <dimen name="mirror_top_btn_size">28dp</dimen>
+    <dimen name="mirror_drag_pill_width">34dp</dimen>
+    <dimen name="mirror_drag_pill_height">4dp</dimen>
+    <dimen name="mirror_resize_size">34dp</dimen>
+    <!-- 小窗最小宽度，防止缩到看不见 -->
+    <dimen name="mirror_min_width">180dp</dimen>
+
+    <!-- 小窗多任务面板（图标模式，不显示任务快照） -->
+    <dimen name="mirror_recent_icon_size">40dp</dimen>
+    <dimen name="mirror_recent_item_padding">6dp</dimen>
+    <!-- 单个图标条目的参考宽度，用来算网格列数 -->
+    <dimen name="mirror_recent_item_width">62dp</dimen>
+</resources>

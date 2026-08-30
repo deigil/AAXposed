@@ -1,40 +1,105 @@
 <resources>
     <string name="app_name">AADisplay</string>
-    <string name="unknown_error">unknown error</string>
-    <string name="details">details</string>
+    <string name="unknown_error">未知错误</string>
+    <string name="details">详情</string>
     <string name="xposeddescription">AADisplay</string>
-    <string name="info_system_version">System Version</string>
-    <string name="info_root_privilege">Root Privilege</string>
-    <string name="activated">Activated</string>
-    <string name="need_reboot">Need Reboot</string>
-    <string name="not_activated">Not Activated</string>
-    <string name="reboot">Reboot</string>
-    <string name="menu_github">GitHub</string>
-    <string name="auto_open_title">Auto Open</string>
-    <string name="auto_open_summary">Automatically open app when Android Auto is connected</string>
-    <string name="disable_waze_on_aa_title">Disable Waze on AA</string>
-    <string name="disable_waze_on_aa_summary">This will keep the map open on your device, not AA</string>
-    <string name="disable_waze_on_aa_apply_failed">Failed to apply Disable Waze on AA setting</string>
-    <string name="disable_google_maps_on_aa_title">Disable Google Maps on AA</string>
-    <string name="disable_google_maps_on_aa_summary">This will keep Google Maps on your device, not AA</string>
-    <string name="disable_google_maps_on_aa_apply_failed">Failed to apply Disable Google Maps on AA setting</string>
-    <string name="default_launch_package_title">Default Launch Package</string>
-    <string name="default_launch_package_summary">App package launched when AADisplay starts</string>
-    <string name="default_launch_package_empty">Default Launch Package is required</string>
-    <string name="default_home_detected">Default Home Launcher: %1$s</string>
-    <string name="default_home_unknown">Default Home Launcher: Not detected</string>
-    <string name="launcher_list_missing">No launcher packages detected on this device</string>
-    <string name="single_launcher_warning">Only one launcher is installed. Using the same launcher as your default home launcher can cause a fatal crash. Install a second launcher first.</string>
-    <string name="package_same_error">You cannot set the Default Launch Package to the same as your device\'s Default (Launcher) Home app</string>
-    <string name="package_validation_ok">Launch package is safe to use</string>
-    <string name="save_settings">Save</string>
-    <string name="delay_destroy_time_title">Delay Destroy Time</string>
-    <string name="delay_destroy_time_invalid">Select a valid Delay Destroy Time</string>
-    <string name="delay_60_seconds">60 Seconds</string>
-    <string name="delay_120_seconds">120 Seconds</string>
-    <string name="delay_180_seconds">180 Seconds</string>
-    <string name="settings_saved_successfully">Settings saved successfully</string>
-    <string name="settings_saved_pref_access_failed">Settings saved, but hook preference access could not be verified</string>
-    <string name="controller_open_menu">Open controller menu</string>
-    <string name="controller_hide_menu">Hide controller menu</string>
+
+    <!-- 菜单 -->
+    <string name="menu_settings">设置</string>
+    <string name="menu_github">项目主页</string>
+
+    <!-- 模块状态 -->
+    <string name="activated">模块已激活</string>
+    <string name="need_reboot">需要重启生效</string>
+    <string name="not_activated">模块未激活</string>
+    <string name="reboot">立即重启</string>
+    <string name="status_aa_version">Android Auto %1$s</string>
+    <string name="status_aa_not_installed">Android Auto 未安装</string>
+
+    <!-- 设备信息 -->
+    <string name="section_device_info">设备信息</string>
+    <string name="info_system_version">系统版本</string>
+    <string name="info_root_privilege">Root 权限</string>
+    <string name="info_yes">已获取</string>
+    <string name="info_no">未获取</string>
+
+    <!-- 常用设置 -->
+    <string name="section_common_settings">常用设置</string>
+    <string name="more_settings_title">高级设置</string>
+    <string name="auto_open_title">自动打开</string>
+    <string name="auto_open_summary">连接 Android Auto 后自动开始投屏</string>
+    <string name="disable_waze_on_aa_title">禁止 Waze 投屏</string>
+    <string name="disable_waze_on_aa_summary">让 Waze 留在手机上显示，而不是投到车机</string>
+    <string name="disable_waze_on_aa_apply_failed">应用「禁止 Waze 投屏」失败</string>
+    <string name="disable_google_maps_on_aa_title">禁止 Google 地图投屏</string>
+    <string name="disable_google_maps_on_aa_summary">让 Google 地图留在手机上显示，而不是投到车机</string>
+    <string name="disable_google_maps_on_aa_apply_failed">应用「禁止 Google 地图投屏」失败</string>
+    <string name="default_launch_package_title">投屏首选应用</string>
+    <string name="default_launch_package_summary">AADisplay 启动后在虚拟屏上打开的应用</string>
+    <string name="default_launch_package_empty">请选择投屏首选应用</string>
+    <string name="default_home_detected">系统默认桌面：%1$s</string>
+    <string name="default_home_unknown">系统默认桌面：未检测到</string>
+    <string name="launcher_list_missing">未检测到任何桌面应用</string>
+    <string name="single_launcher_warning">设备上只有一个桌面应用。与系统默认桌面使用同一个应用会导致严重崩溃，请先安装第二个桌面。</string>
+    <string name="package_same_error">投屏首选应用不能与系统默认桌面相同</string>
+    <string name="package_validation_ok">该应用可以安全用于投屏</string>
+    <string name="save_settings">保存</string>
+    <string name="delay_destroy_time_title">延迟销毁时间</string>
+    <string name="delay_destroy_time_invalid">请选择有效的延迟销毁时间</string>
+    <string name="delay_60_seconds">60 秒</string>
+    <string name="delay_120_seconds">120 秒</string>
+    <string name="delay_180_seconds">180 秒</string>
+    <string name="settings_saved_successfully">设置已保存</string>
+    <string name="settings_saved_pref_access_failed">设置已保存，但无法确认模块能否读取配置</string>
+
+    <!-- 悬浮窗 -->
+    <string name="controller_open_menu">展开控制面板</string>
+    <string name="controller_hide_menu">收起控制面板</string>
+    <string name="controller_mirror">在手机上镜像车机画面</string>
+    <string name="controller_extinguish">熄屏</string>
+    <string name="mirror_back">返回</string>
+    <string name="mirror_home">桌面</string>
+    <string name="mirror_recent_task">多任务</string>
+    <string name="mirror_close">收起小窗</string>
+    <string name="mirror_resize">拖动缩放，长按恢复默认大小</string>
+    <string name="mirror_size_reset">已恢复默认大小</string>
+
+    <!-- 高级设置页 -->
+    <string name="pref_category_display">投屏显示</string>
+    <string name="pref_category_app_projection">应用投屏</string>
+    <string name="pref_category_fix">兼容性修复</string>
+    <string name="pref_category_interact">交互</string>
+    <string name="pref_category_shell">Shell 命令</string>
+    <string name="pref_category_aa">Android Auto 属性</string>
+
+    <string name="pref_ime_policy_title">键盘显示位置</string>
+    <string name="pref_hide_aa_ui_title">隐藏车机 UI 控件</string>
+    <string name="pref_hide_aa_ui_summary">隐藏 Coolwalk 侧边栏并全屏投屏，控制交给手机悬浮窗</string>
+    <string name="pref_force_right_angle_title">强制直角</string>
+    <string name="pref_force_right_angle_summary">去掉车机画面的圆角裁切</string>
+    <string name="pref_close_launcher_dashboard_title">阻止 AA 分屏切换</string>
+    <string name="pref_close_launcher_dashboard_summary">屏蔽 Android Auto 的仪表盘分屏布局</string>
+    <string name="pref_virtual_display_dpi_title">虚拟屏 DPI</string>
+    <string name="pref_virtual_display_dpi_summary">留空或 0 表示跟随车机</string>
+    <string name="pref_android_auto_dpi_title">Android Auto DPI</string>
+    <string name="pref_android_auto_dpi_summary">留空或 0 表示不修改</string>
+
+    <string name="pref_suspend_eye_care_title">投屏时暂停护眼模式</string>
+    <string name="pref_suspend_eye_care_summary">MIUI/HyperOS 的护眼模式会让车机画面发黄；投屏期间临时关闭，断开后恢复（手机自身也会暂时失去护眼效果）</string>
+    <string name="pref_fix_gboard_ime_title">修正 Gboard 悬浮键盘</string>
+    <string name="pref_fix_gboard_ime_summary">投屏期间把 Gboard 读到的悬浮形态改回普通键盘，不写入 Gboard 设置。键盘显示位置设为「手机主屏」时通常无需开启</string>
+
+    <string name="pref_voice_assist_shell_title">语音助手 Shell</string>
+    <string name="pref_voice_assist_shell_summary">点击助手图标时执行的命令，支持 ${DisplayId} 占位符</string>
+    <string name="pref_screen_off_replace_lock_title">电源键仅熄屏</string>
+    <string name="pref_screen_off_replace_lock_summary">投屏期间按电源键只关闭屏幕，不锁定设备</string>
+
+    <string name="pref_create_before_title">创建虚拟屏前执行</string>
+    <string name="pref_create_before_summary">开始投屏前执行的 Shell 命令，每行一条</string>
+    <string name="pref_destroy_after_title">销毁虚拟屏后执行</string>
+    <string name="pref_destroy_after_summary">结束投屏后执行的 Shell 命令，每行一条</string>
+
+    <string name="pref_gearhead_props_title">gearhead 属性覆盖</string>
+    <string name="pref_gms_car_props_title">gms.car 属性覆盖</string>
+    <string name="pref_props_summary">key=value，每行一条</string>
 </resources>

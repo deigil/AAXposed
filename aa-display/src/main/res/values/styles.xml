@@ -1,3 +1,123 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+
+    <!-- ============ miuix 风格基础样式 ============ -->
+    <!-- miuix 的观感要点：大圆角白卡片、灰底页面、分组列表、
+         标题偏粗、次要说明小一号灰字、几乎不用阴影。 -->
+
+    <style name="Miuix.Card" parent="Widget.Material3.CardView.Filled">
+        <item name="cardBackgroundColor">@color/miuix_card</item>
+        <item name="cardCornerRadius">18dp</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeWidth">0dp</item>
+        <item name="cardPreventCornerOverlap">false</item>
+    </style>
+
+    <style name="Miuix.Card.Status">
+        <item name="cardCornerRadius">20dp</item>
+    </style>
+
+    <!-- 分组标题：miuix 里在卡片外侧、左边距对齐、灰色小字 -->
+    <style name="Miuix.GroupTitle" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">20dp</item>
+        <item name="android:layout_marginBottom">2dp</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">@color/miuix_text_secondary</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <!-- 列表行标题 / 副标题 -->
+    <style name="Miuix.ItemTitle" parent="">
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@color/miuix_text_primary</item>
+    </style>
+
+    <style name="Miuix.ItemSummary" parent="">
+        <item name="android:layout_marginTop">2dp</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">@color/miuix_text_secondary</item>
+        <item name="android:lineSpacingExtra">1dp</item>
+    </style>
+
+    <style name="Miuix.ItemValue" parent="">
+        <item name="android:textSize">15sp</item>
+        <item name="android:textColor">@color/miuix_text_secondary</item>
+    </style>
+
+    <!-- 分割线：只在行与行之间，左侧留出与文字对齐的缩进 -->
+    <style name="Miuix.Divider" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">0.5dp</item>
+        <item name="android:layout_marginStart">18dp</item>
+        <item name="android:background">@color/miuix_divider</item>
+    </style>
+
+    <!-- miuix 的主按钮是全宽胶囊 -->
+    <style name="Miuix.Button" parent="Widget.Material3.Button">
+        <item name="android:minHeight">50dp</item>
+        <item name="cornerRadius">25dp</item>
+        <item name="android:textSize">16sp</item>
+        <item name="backgroundTint">@color/miuix_blue</item>
+        <item name="android:textColor">@android:color/white</item>
+    </style>
+
+    <style name="Miuix.TextInputLayout" parent="Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu">
+        <item name="boxCornerRadiusTopStart">14dp</item>
+        <item name="boxCornerRadiusTopEnd">14dp</item>
+        <item name="boxCornerRadiusBottomStart">14dp</item>
+        <item name="boxCornerRadiusBottomEnd">14dp</item>
+    </style>
+
+    <!-- 兼容旧布局引用 -->
+    <style name="DeviceInfoDialogLabel" parent="Miuix.ItemTitle" />
+    <style name="DeviceInfoDialogValue" parent="Miuix.ItemValue" />
+
+    <!-- ============ 高级设置页（偏好列表）的 miuix 化 ============ -->
+    <!-- 在 rikka 的 Material3 偏好主题之上，把行布局换成 pref_miuix*，
+         卡片背景由 MiuixCardDecoration 绘制，所以行本身背景透明。 -->
+    <style name="Preference.Miuix" parent="Preference.Rikka.Material3">
+        <item name="android:layout">@layout/pref_miuix</item>
+        <item name="layout">@layout/pref_miuix</item>
+    </style>
+
+    <style name="Preference.Miuix.Category" parent="Preference.Rikka.Category.Material3">
+        <item name="android:layout">@layout/pref_miuix_category</item>
+        <item name="layout">@layout/pref_miuix_category</item>
+    </style>
+
+    <style name="Preference.Miuix.EditText" parent="Preference.Rikka.EditTextPreference.Material3">
+        <item name="android:layout">@layout/pref_miuix</item>
+        <item name="layout">@layout/pref_miuix</item>
+    </style>
+
+    <style name="Preference.Miuix.Switch" parent="Preference.Rikka.SwitchPreference.Material3">
+        <item name="android:layout">@layout/pref_miuix</item>
+        <item name="layout">@layout/pref_miuix</item>
+    </style>
+
+    <style name="Preference.Miuix.MaterialSwitch" parent="Preference.Rikka.MateriaSwitchPreference">
+        <item name="android:layout">@layout/pref_miuix</item>
+        <item name="layout">@layout/pref_miuix</item>
+    </style>
+
+    <style name="PreferenceThemeOverlay.Miuix" parent="PreferenceThemeOverlay.Rikka.Material3">
+        <item name="preferenceCategoryStyle">@style/Preference.Miuix.Category</item>
+        <!-- rikka 默认把分组标题染成 ?colorPrimary，miuix 要的是灰色小字 -->
+        <item name="preferenceCategoryTitleTextColor">@color/miuix_text_secondary</item>
+        <item name="preferenceStyle">@style/Preference.Miuix</item>
+        <item name="dialogPreferenceStyle">@style/Preference.Miuix</item>
+        <item name="editTextPreferenceStyle">@style/Preference.Miuix.EditText</item>
+        <item name="switchPreferenceStyle">@style/Preference.Miuix.Switch</item>
+        <item name="switchPreferenceCompatStyle">@style/Preference.Miuix.Switch</item>
+        <item name="materialSwitchPreferenceStyle">@style/Preference.Miuix.MaterialSwitch</item>
+    </style>
+
+    <style name="ThemeOverlay.Miuix.Preference" parent="ThemeOverlay.Rikka.Material3.Preference">
+        <item name="preferenceTheme">@style/PreferenceThemeOverlay.Miuix</item>
+    </style>
+
 </resources>

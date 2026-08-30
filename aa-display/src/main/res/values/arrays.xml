@@ -2,9 +2,24 @@
     <string-array name="xposed_scope" >
         <item>android</item>
         <item>com.google.android.projection.gearhead</item>
+        <item>io.github.nitsuya.aa.display</item>
         <item>com.waze</item>
+        <!-- Gboard：投屏横屏时修正悬浮键盘，见 GboardImeHook -->
+        <item>com.google.android.inputmethod.latin</item>
         <item>com.autonavi.amapauto</item>
         <item>com.ss.squarehome2</item>
+    </string-array>
+
+    <!-- DisplayImePolicy，与 WindowManager.DISPLAY_IME_POLICY_* 对应 -->
+    <string-array name="ime_policy_keys">
+        <item>显示在手机主屏（推荐）</item>
+        <item>显示在投屏虚拟屏</item>
+        <item>不显示键盘</item>
+    </string-array>
+    <string-array name="ime_policy_values">
+        <item>1</item>
+        <item>0</item>
+        <item>2</item>
     </string-array>
 
 </resources>
