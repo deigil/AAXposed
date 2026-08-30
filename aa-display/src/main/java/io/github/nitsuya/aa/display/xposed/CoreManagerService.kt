@@ -11,7 +11,15 @@ import io.github.nitsuya.aa.display.BuildConfig
 import io.github.nitsuya.aa.display.model.RecentTask
 import io.github.nitsuya.aa.display.ui.aa.AaVirtualDisplayAdapter
 import io.github.nitsuya.aa.display.ui.window.DisplayWindow
+import io.github.nitsuya.aa.display.util.AABroadcastConst
 import io.github.nitsuya.aa.display.util.AADisplayConfig
+import io.github.nitsuya.aa.display.util.CoolwalkRailStore
+import io.github.nitsuya.aa.display.util.DisplayProfileSettle
+import io.github.nitsuya.aa.display.util.EyeCareSuspender
+import io.github.nitsuya.aa.display.util.ProjectionState
+import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.CoolwalkRailMath
+import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.RailPhase
+import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.RailSnapshot
 import io.github.nitsuya.aa.display.xposed.util.Instances
 import io.github.nitsuya.template.bases.runIO
 import io.github.nitsuya.template.bases.runMain
@@ -62,6 +70,89 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
         }
         private var mLockedDisplayProfile: DisplayProfile? = null
 
+        /** true once [systemContext] has been assigned (Coolwalk settle needs a real Context). */
+        private val hasSystemContext: Boolean
+            get() = ::systemContextHost.isInitialized
+
+        private const val RAIL_SETTLE_RETRY_MS = 450L
+        private val mMainHandler = Handler(Looper.getMainLooper())
+        private val mRailSettleRetryRunnable = Runnable { retryRailAwareSettle() }
+
+        @Volatile
+        private var mCoolwalkReconnectEpochMs = 0L
+
+        private fun cancelRailSettleRetry() {
+            mMainHandler.removeCallbacks(mRailSettleRetryRunnable)
+        }
+
+        private fun scheduleRailSettleRetry() {
+            cancelRailSettleRetry()
+            mMainHandler.postDelayed(mRailSettleRetryRunnable, RAIL_SETTLE_RETRY_MS)
+        }
+
+        /**
+         * After soft reconnect, GhFacetBar may appear (or be starved) a beat after the
+         * first create. Re-settle so we neither stay at full HU with a live rail strip
+         * nor stay at HU−rail after the strip is gone.
+         */
+        private fun retryRailAwareSettle() {
+            val current = mLockedDisplayProfile ?: return
+            val adapter = mAaVirtualDisplayAdapter ?: return
+            if (!hasSystemContext) return
+            val railW = resolveRailWidthPx()
+            val fullW = resolveObservedFullHuWidthPx(current.width, current.height)
+            val settled = DisplayProfileSettle.settle(
+                DisplayProfileSettle.Size(current.width, current.height, current.densityDpi),
+                railWidthPx = railW,
+                fullHuWidthPx = fullW,
+            )
+            val next = sanitizeDisplayProfile(settled.width, settled.height, settled.densityDpi)
+            if (next == current) return
+            mLockedDisplayProfile = next
+            log(
+                TAG,
+                "displayProfile relocked(rail-settle): ${current.width}*${current.height} -> " +
+                    "${next.width}*${next.height} rail=$railW full=$fullW"
+            )
+            if (next.width > current.width &&
+                DisplayProfileSettle.isContentSlotVsFull(current.width, next.width)
+            ) {
+                instance.notifyCoolwalkFullBleed()
+            }
+            runMain {
+                adapter.onReconnected(next.width, next.height, next.densityDpi)
+                mDisplayWindow?.onResume(next.width, next.height)
+            }
+        }
+
+        /**
+         * Compositor FacetBar strip is the only profile input — never touchRailWidthPx
+         * or a cached FullBleed phase (stale after reconnect blacks the left gutter).
+         */
+        private fun resolveRailWidthPx(): Int {
+            if (!hasSystemContext) return 0
+            val liveRail = DisplayProfileSettle.observeLiveRailWidthPx(systemContext)
+            return if (liveRail <= 1) 0 else liveRail
+        }
+
+        private fun resolveObservedFullHuWidthPx(reportedWidth: Int, reportedHeight: Int): Int {
+            if (!hasSystemContext) return reportedWidth
+            val snap = CoolwalkRailStore.effectiveSnapshot(systemContext.contentResolver)
+            val observed = DisplayProfileSettle.observeFullHuWidthPx(
+                systemContext,
+                reportedWidth.coerceAtLeast(1),
+                reportedHeight,
+            )
+            val measured = observed.coerceAtLeast(reportedWidth)
+            return CoolwalkRailMath.pickConnectionFullHuWidth(
+                snap.fullHuWidthPx,
+                snap.layoutHeightPx,
+                measured,
+                reportedHeight,
+                snap.touchRailWidthPx,
+            )
+        }
+
         private fun sanitizeDisplayProfile(width: Int, height: Int, densityDpi: Int): DisplayProfile {
             return DisplayProfile(
                 width = width.coerceAtLeast(1),
@@ -73,7 +164,8 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
         /**
          * Lock profile per active AA display session.
          * - New display session: (re)learn from current size.
-         * - Reconnect within same session: keep locked size unless orientation flips.
+         * - Reconnect within same session: keep locked size unless orientation flips,
+         *   or Coolwalk reclaimed the vertical rail (then widen to the full HU).
          */
         private fun resolveDisplayProfile(
             width: Int,
@@ -81,14 +173,28 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
             densityDpi: Int,
             newSession: Boolean
         ): DisplayProfile {
-            val candidate = sanitizeDisplayProfile(width, height, densityDpi)
+            val reported = sanitizeDisplayProfile(width, height, densityDpi)
+            val railW = resolveRailWidthPx()
+            val fullW = resolveObservedFullHuWidthPx(reported.width, reported.height)
+            val settled = DisplayProfileSettle.settle(
+                DisplayProfileSettle.Size(reported.width, reported.height, reported.densityDpi),
+                railWidthPx = railW,
+                fullHuWidthPx = fullW,
+            )
+            val candidate = sanitizeDisplayProfile(settled.width, settled.height, settled.densityDpi)
             val current = mLockedDisplayProfile
             if (current == null) {
                 mLockedDisplayProfile = candidate
-                log(TAG, "displayProfile locked: ${candidate.width}*${candidate.height},${candidate.densityDpi}")
+                log(
+                    TAG,
+                    "displayProfile locked: ${candidate.width}*${candidate.height},${candidate.densityDpi}" +
+                        " (reported=${reported.width} rail=$railW full=$fullW)"
+                )
+                if (!newSession) scheduleRailSettleRetry()
                 return candidate
             }
             if (newSession) {
+                cancelRailSettleRetry()
                 if (current != candidate) {
                     mLockedDisplayProfile = candidate
                     log(
@@ -99,11 +205,28 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
                 return mLockedDisplayProfile!!
             }
             if (current.isLandscape != candidate.isLandscape) {
+                cancelRailSettleRetry()
                 mLockedDisplayProfile = candidate
                 log(
                     TAG,
                     "displayProfile relocked(orientation): ${current.width}*${current.height},${current.densityDpi} -> ${candidate.width}*${candidate.height},${candidate.densityDpi}"
                 )
+                return candidate
+            }
+            // Only Coolwalk rail reclaim may widen a locked profile mid-session; every other
+            // reconnect jitter keeps the locked size exactly as before.
+            if (candidate.width > current.width &&
+                candidate.height == current.height &&
+                DisplayProfileSettle.isContentSlotVsFull(current.width, candidate.width)
+            ) {
+                mLockedDisplayProfile = candidate
+                log(
+                    TAG,
+                    "displayProfile relocked(coolwalk-settle): ${current.width}*${current.height} -> " +
+                        "${candidate.width}*${candidate.height} reported=${reported.width} rail=$railW full=$fullW"
+                )
+                instance.notifyCoolwalkFullBleed()
+                scheduleRailSettleRetry()
                 return candidate
             }
             if (current != candidate) {
@@ -112,14 +235,57 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
                     "displayProfile keep-locked(reconnect): locked=${current.width}*${current.height},${current.densityDpi}, incoming=${candidate.width}*${candidate.height},${candidate.densityDpi}"
                 )
             }
+            // Rail / starve often lands after the first soft-reconnect create; one retry.
+            scheduleRailSettleRetry()
             return current
         }
 
         private fun clearDisplayProfileLock() {
+            cancelRailSettleRetry()
+            CoolwalkRailStore.clear(if (hasSystemContext) systemContext.contentResolver else null)
             mLockedDisplayProfile?.also {
                 log(TAG, "displayProfile cleared: ${it.width}*${it.height},${it.densityDpi}")
             }
             mLockedDisplayProfile = null
+        }
+
+        /**
+         * MIUI 护眼矩阵是全局的（display 0 → SF 广播全屏），投屏期间抑制、断开后还原。
+         * 软重连会重复进 [onCreateDisplay]，[EyeCareSuspender.suspend] 自身幂等。
+         */
+        private fun suspendEyeCareForProjection() {
+            if (!hasSystemContext) return
+            val enabled = AADisplayConfig.SuspendEyeCareOnProjection.get(config)
+            val r = EyeCareSuspender.suspend(systemContext, enabled)
+            if (r is EyeCareSuspender.Result.Failed) {
+                log(TAG, "eyeCare suspend failed", r.error)
+            } else if (r !is EyeCareSuspender.Result.Disabled &&
+                r !is EyeCareSuspender.Result.NothingToDo
+            ) {
+                log(TAG, "eyeCare suspend: $r")
+            }
+        }
+
+        private fun restoreEyeCareAfterProjection() {
+            if (!hasSystemContext) return
+            val r = EyeCareSuspender.restore(systemContext)
+            if (r is EyeCareSuspender.Result.Failed) {
+                log(TAG, "eyeCare restore failed", r.error)
+            } else if (r !is EyeCareSuspender.Result.NotActive) {
+                log(TAG, "eyeCare restore: $r")
+            }
+        }
+
+        /**
+         * 投屏状态位，供普通应用进程里的 hook 读取
+         * （[io.github.nitsuya.aa.display.xposed.hook.GboardImeHook]）。
+         * 与护眼抑制同一对生命周期点，软重连重复调用保持幂等。
+         */
+        private fun markProjectionState(active: Boolean) {
+            if (!hasSystemContext) return
+            val cr = systemContext.contentResolver
+            val ok = if (active) ProjectionState.markActive(cr) else ProjectionState.markInactive(cr)
+            if (!ok) log(TAG, "projection state write failed: active=$active")
         }
 
         @SuppressLint("UnspecifiedRegisterReceiverFlag")
@@ -138,6 +304,17 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
 
             TipUtil.init(systemContext, "[AADisplay] ")
             Instances.init(systemContext)
+
+            // 上一次开机挂起后未能还原（进程被杀 / 直接重启）时，screen_paper_mode_enabled 会带着
+            // 我们置的值持久化下来使护眼一直失效，这里兜底回滚。
+            EyeCareSuspender.recoverStaleSuspend(systemContext).also { r ->
+                if (r !is EyeCareSuspender.Result.NotActive) {
+                    log(TAG, "eyeCare stale recover: $r")
+                }
+            }
+
+            // 同理清掉可能残留的投屏状态位，避免第三方进程一直按“投屏中”行事。
+            markProjectionState(false)
 
 //            runIO {
 //                try{
@@ -219,6 +396,8 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
                 onReconnected(profile.width, profile.height, profile.densityDpi)
                 setSurface(surface)
                 mDisplayWindow?.onResume(profile.width, profile.height)
+                suspendEyeCareForProjection()
+                markProjectionState(true)
                 listener.onAvailableDisplay(this.mDisplayId, false)
                 return@runMain
             }
@@ -234,6 +413,8 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
                 log(TAG, "config: ${this.all.map { "${it.key}=${it.value}[${it.value?.javaClass?.name}]" }.joinToString() }")
             }
             mDisplayCreateInProgress = true
+            suspendEyeCareForProjection()
+            markProjectionState(true)
             AaVirtualDisplayAdapter(systemContext, config){
                 try {
                     mAaVirtualDisplayAdapter = this
@@ -264,12 +445,21 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
 
     override fun onDestroyDisplay(){
         runMain {
-            mDisplayWindow?.onDestroy {
+            val window = mDisplayWindow
+            if (window == null) {
+                // 悬浮窗还没建起来就断开：延迟销毁回调不会触发，护眼必须在这里还原。
+                restoreEyeCareAfterProjection()
+                markProjectionState(false)
+                return@runMain
+            }
+            window.onDestroy {
                 mAaVirtualDisplayAdapter?.onDestroy()
                 mDisplayWindow = null
                 mAaVirtualDisplayAdapter = null
                 mDisplayCreateInProgress = false
                 clearDisplayProfileLock()
+                restoreEyeCareAfterProjection()
+                markProjectionState(false)
             }
         }
     }
@@ -470,6 +660,67 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
     override fun printLog(tag: String, msg: String){
         runIO {
             log(tag, msg)
+        }
+    }
+
+    override fun reportCoolwalkRailSnapshot(
+        phase: Int,
+        touchRailWidthPx: Int,
+        fullHuWidthPx: Int,
+        facetDisplayId: Int,
+    ) {
+        if (phase == RailPhase.ReconnectSettling.code) {
+            mCoolwalkReconnectEpochMs = SystemClock.uptimeMillis()
+        }
+        val snapshot = RailSnapshot(
+            phase = RailPhase.fromCode(phase),
+            effectiveRailWidthPx = 0,
+            touchRailWidthPx = touchRailWidthPx,
+            fullHuWidthPx = fullHuWidthPx,
+            facetDisplayId = facetDisplayId,
+            updatedUptimeMs = SystemClock.uptimeMillis(),
+            lastEvent = "client-report",
+        )
+        val prevFull = CoolwalkRailStore.serverSnapshot.fullHuWidthPx
+        val cr = if (hasSystemContext) systemContext.contentResolver else null
+        CoolwalkRailStore.rememberFromReport(snapshot, cr)
+        CoolwalkRailStore.publishServer(snapshot)
+        if (cr != null) {
+            CoolwalkRailStore.write(cr, snapshot)
+        }
+        log(
+            TAG,
+            "CoolwalkRail snapshot phase=${snapshot.phase} touch=$touchRailWidthPx full=$fullHuWidthPx facet=$facetDisplayId"
+        )
+        if (fullHuWidthPx > prevFull || snapshot.phase == RailPhase.FullBleed) {
+            scheduleRailSettleRetry()
+        }
+    }
+
+    override fun getCoolwalkRailSnapshot(): IntArray {
+        val s = CoolwalkRailStore.effectiveSnapshot(
+            if (hasSystemContext) systemContext.contentResolver else null,
+        )
+        return intArrayOf(s.phase.code, s.touchRailWidthPx, s.fullHuWidthPx, s.facetDisplayId)
+    }
+
+    override fun getCoolwalkReconnectEpochMs(): Long = mCoolwalkReconnectEpochMs
+
+    /**
+     * gearhead cannot reliably deliver package-targeted broadcasts on Android 13+, so the
+     * full-bleed signal is relayed from the system uid instead.
+     */
+    override fun notifyCoolwalkFullBleed() {
+        if (!hasSystemContext) return
+        runIO {
+            try {
+                systemContext.sendBroadcast(
+                    Intent(AABroadcastConst.ACTION_COOLWALK_FULL_BLEED)
+                        .setPackage(BuildConfig.APPLICATION_ID)
+                )
+            } catch (e: Throwable) {
+                log(TAG, "notifyCoolwalkFullBleed failed", e)
+            }
         }
     }
 }

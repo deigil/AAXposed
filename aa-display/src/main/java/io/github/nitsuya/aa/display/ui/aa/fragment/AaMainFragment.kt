@@ -95,6 +95,12 @@ class AaMainFragment : BaseFragment<FragmentAaMainBinding>(FragmentAaMainBinding
                         }
                     }
                 }
+                AABroadcastConst.ACTION_COOLWALK_FULL_BLEED -> {
+                    // 车机侧边栏空间已回收，按整块车机宽度重新申请投屏画布。
+                    baseBinding.tvDisplay.post {
+                        requestDisplay("full-bleed")
+                    }
+                }
                 AABroadcastConst.ACTION_STEERING_WHEEL_CONTROL -> {
                     val action = intent.getIntExtra(AABroadcastConst.EXTRA_ACTION, 0)
                     when (intent.getIntExtra(AABroadcastConst.EXTRA_TYPE, 0)) {
@@ -292,6 +298,7 @@ class AaMainFragment : BaseFragment<FragmentAaMainBinding>(FragmentAaMainBinding
         ContextCompat.registerReceiver(this@AaMainFragment.requireContext(), broadcastReceiver, IntentFilter().apply {
             addAction(AABroadcastConst.ACTION_SCREEN_CONTROL)
             addAction(AABroadcastConst.ACTION_STEERING_WHEEL_CONTROL)
+            addAction(AABroadcastConst.ACTION_COOLWALK_FULL_BLEED)
         }, ContextCompat.RECEIVER_EXPORTED)
         isControlReceiverRegistered = true
     }

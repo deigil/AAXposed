@@ -36,4 +36,24 @@ interface ICoreManager {
     void testCode(String action);
     void toast(String msg);
     void printLog(String tag, String msg);
+
+    /**
+     * gearhead :projection / :car report Coolwalk rail snapshot for display-profile settle.
+     * phase is RailPhase.code. Appended at end to keep existing Stub ordinals stable.
+     */
+    oneway void reportCoolwalkRailSnapshot(int phase, int touchRailWidthPx, int fullHuWidthPx, int facetDisplayId);
+
+    /**
+     * Returns int[4]: phase, touchRailWidthPx, fullHuWidthPx, facetDisplayId.
+     */
+    int[] getCoolwalkRailSnapshot();
+
+    /** SystemClock.uptimeMillis of the latest gearhead soft reconnect; 0 if none. */
+    long getCoolwalkReconnectEpochMs();
+
+    /**
+     * system_server -> AADisplay: gearhead cannot reliably deliver package-targeted
+     * broadcasts on Android 13+, so relay the full-bleed signal through the system uid.
+     */
+    oneway void notifyCoolwalkFullBleed();
 }

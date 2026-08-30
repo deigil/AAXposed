@@ -6,9 +6,11 @@ import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.IXposedHookZygoteInit
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.nitsuya.aa.display.BuildConfig
+import io.github.nitsuya.aa.display.xposed.hook.AaDisplayProcessHook
 import io.github.nitsuya.aa.display.xposed.hook.AndroidAuoHook
 import io.github.nitsuya.aa.display.xposed.hook.AndroidHook
 import io.github.nitsuya.aa.display.xposed.hook.BaseHook
+import io.github.nitsuya.aa.display.xposed.hook.GboardImeHook
 import io.github.nitsuya.aa.display.xposed.hook.OtherHook
 import io.github.nitsuya.aa.display.xposed.hook.WazeHook
 
@@ -27,7 +29,11 @@ class XposedInit : IXposedHookZygoteInit, IXposedHookLoadPackage{
             packageName == "android" && lpparam.appInfo == null -> arrayOf(AndroidHook)
             packageName == "com.google.android.projection.gearhead" -> arrayOf(AndroidAuoHook)
             packageName == "com.waze" -> arrayOf(OtherHook, WazeHook)
-            packageName == BuildConfig.APPLICATION_ID || lpparam.appInfo == null || lpparam.appInfo.uid == 1000 -> null
+            // 只挂 GboardImeHook：OtherHook 会把 status_bar_height 归零，
+            // 那是给投屏里的普通应用用的，输入法进程不需要也不该被改。
+            packageName == GboardImeHook.PACKAGE_GBOARD -> arrayOf(GboardImeHook)
+            packageName == BuildConfig.APPLICATION_ID -> arrayOf(AaDisplayProcessHook)
+            lpparam.appInfo == null || lpparam.appInfo.uid == 1000 -> null
             else -> arrayOf(OtherHook)
         }?.also {
             initHooks(lpparam, *it)

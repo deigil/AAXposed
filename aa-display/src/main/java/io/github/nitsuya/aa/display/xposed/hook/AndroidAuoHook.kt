@@ -14,6 +14,7 @@ import io.github.nitsuya.aa.display.util.AADisplayConfig
 import io.github.nitsuya.aa.display.xposed.hook.aa.AaBasicsHook
 import io.github.nitsuya.aa.display.xposed.hook.aa.AaBtnEventHook
 import io.github.nitsuya.aa.display.xposed.hook.aa.AaDpiHook
+import io.github.nitsuya.aa.display.xposed.hook.aa.AaMediaPlaceholderHook
 import io.github.nitsuya.aa.display.xposed.hook.aa.AaPropsHook
 import io.github.nitsuya.aa.display.xposed.hook.aa.AaSignatureHook
 import io.github.nitsuya.aa.display.xposed.hook.aa.AaUiHook
@@ -30,6 +31,12 @@ abstract class AaHook {
     }
     abstract val tagName: String
     abstract fun isSupportProcess(processName: String) : Boolean
+
+    /**
+     * 配置级开关：即使 [isSupportProcess] 命中，也可以按配置整块跳过。
+     * 在 [loadDexClass] / [hook] 之前调用一次，供 hook 缓存自己的开关状态。
+     */
+    open fun isEnabled(config: SharedPreferences?, processName: String): Boolean = true
     open fun loadDexClass(bridge: DexKitBridge, lpparam: XC_LoadPackage.LoadPackageParam) {}
     abstract fun hook(config: SharedPreferences?, lpparam: XC_LoadPackage.LoadPackageParam)
 }
@@ -38,8 +45,9 @@ object AndroidAuoHook : BaseHook() {
     override val tagName: String = "AAD_AndroidAuoHook"
     override fun init(lpparam: XC_LoadPackage.LoadPackageParam) {
         val processName = lpparam.processName
-        val hooks = listOf(AaBasicsHook, AaSignatureHook, AaDpiHook, AaBtnEventHook, AaUiHook, AaPropsHook).filter { i -> i.isSupportProcess(processName) }
-        if(hooks.isEmpty()) return
+        val supported = listOf(AaBasicsHook, AaSignatureHook, AaDpiHook, AaBtnEventHook, AaUiHook, AaMediaPlaceholderHook, AaPropsHook)
+            .filter { i -> i.isSupportProcess(processName) }
+        if(supported.isEmpty()) return
 
         val configPreferences = XSharedPreferences(BuildConfig.APPLICATION_ID, AADisplayConfig.ConfigName)
         val config = if (configPreferences.file.canRead()) {
@@ -53,6 +61,13 @@ object AndroidAuoHook : BaseHook() {
             log(tagName, "configPreferences unreadable: ${configPreferences.file}; continuing with defaults")
             null
         }
+
+        val hooks = supported.filter { h ->
+            runCatching { h.isEnabled(config, processName) }.onFailure { e ->
+                log(tagName, "${h.tagName} isEnabled failed; keeping hook enabled", e)
+            }.getOrDefault(true)
+        }
+        if(hooks.isEmpty()) return
 
         var onCreateApplication: XC_MethodHook.Unhook? = null
         onCreateApplication = findMethod(Instrumentation::class.java) {
