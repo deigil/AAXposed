@@ -11,8 +11,8 @@ import com.github.kyuubiran.ezxhelper.utils.hookBefore
 import com.github.kyuubiran.ezxhelper.utils.loadClass
 import io.github.nitsuya.aa.display.util.AABroadcastConst
 import io.github.nitsuya.aa.display.xposed.CoreManager
-import io.github.nitsuya.aa.display.xposed.util.log
-import io.github.nitsuya.aa.display.xposed.util.logDebug
+import io.github.nitsuya.aa.display.xposed.log
+import io.github.nitsuya.aa.display.xposed.logDebug
 import kotlin.math.abs
 
 object AaCoolwalkProjectionHook {

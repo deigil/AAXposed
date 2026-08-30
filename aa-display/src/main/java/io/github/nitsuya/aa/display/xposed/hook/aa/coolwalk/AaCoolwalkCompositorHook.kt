@@ -7,8 +7,8 @@ import com.github.kyuubiran.ezxhelper.utils.findMethod
 import com.github.kyuubiran.ezxhelper.utils.hookAfter
 import com.github.kyuubiran.ezxhelper.utils.hookBefore
 import com.github.kyuubiran.ezxhelper.utils.loadClass
-import io.github.nitsuya.aa.display.xposed.util.log
-import io.github.nitsuya.aa.display.xposed.util.logDebug
+import io.github.nitsuya.aa.display.xposed.log
+import io.github.nitsuya.aa.display.xposed.logDebug
 import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
@@ -16,6 +16,14 @@ import kotlin.math.abs
 object AaCoolwalkCompositorHook {
 
     private val railVdByDisplayId = ConcurrentHashMap<Int, WeakReference<VirtualDisplay>>()
+
+    /**
+     * A rail VD must be a real secondary display: never the invalid id and never the
+     * phone's own default display (starving that one blanks the device).
+     */
+    private fun isTrustedRailDisplayId(displayId: Int): Boolean =
+        displayId != android.view.Display.INVALID_DISPLAY &&
+            displayId != android.view.Display.DEFAULT_DISPLAY
 
     fun install(env: CoolwalkHookEnv) {
         hookVirtualDisplaySizing(env)
@@ -32,7 +40,7 @@ object AaCoolwalkCompositorHook {
         }.getOrNull() ?: return
         var starved = 0
         for (display in dm.displays) {
-            if (!AaCoolwalkHuTouchHook.isTrustedRailDisplayId(display.displayId)) continue
+            if (!isTrustedRailDisplayId(display.displayId)) continue
             if (!CoolwalkRailMath.isRailVirtualDisplayName(display.name)) continue
             val width = runCatching { display.mode.physicalWidth }.getOrDefault(0)
             val height = runCatching { display.mode.physicalHeight }.getOrDefault(0)
@@ -218,7 +226,7 @@ object AaCoolwalkCompositorHook {
     private fun rememberRailVirtualDisplay(name: String?, vd: VirtualDisplay?) {
         if (vd == null || !CoolwalkRailMath.isRailVirtualDisplayName(name)) return
         val display = vd.display ?: return
-        if (!AaCoolwalkHuTouchHook.isTrustedRailDisplayId(display.displayId)) return
+        if (!isTrustedRailDisplayId(display.displayId)) return
         railVdByDisplayId[display.displayId] = WeakReference(vd)
         val width = display.mode.physicalWidth
         val actions = mutableListOf<RailAction>()

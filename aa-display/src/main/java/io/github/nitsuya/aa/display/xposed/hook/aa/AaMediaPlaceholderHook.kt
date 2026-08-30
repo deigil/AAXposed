@@ -2,6 +2,7 @@ package io.github.nitsuya.aa.display.xposed.hook.aa
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.view.View
@@ -14,58 +15,51 @@ import de.robv.android.xposed.XC_MethodReplacement
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.nitsuya.aa.display.BuildConfig
+import io.github.nitsuya.aa.display.util.AADisplayConfig
 import io.github.nitsuya.aa.display.xposed.hook.AaHook
-import io.github.nitsuya.aa.display.xposed.hook.DexKitMethodCache
-import io.github.nitsuya.aa.display.xposed.util.log
-import io.github.nitsuya.aa.display.xposed.util.logDebug
+import io.github.nitsuya.aa.display.xposed.log
+import io.github.nitsuya.aa.display.xposed.logDebug
 import org.luckypray.dexkit.DexKitBridge
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 
 /**
- * Coolwalk empty media card is the **Dashboard** presentation
- * (≈304×460 on 800×480 HUs) showing "无法获享媒体内容".
+ * Coolwalk 空媒体卡就是 **Dashboard** presentation（800×480 车机上约 304×460），
+ * 显示“无法获取媒体内容”。
  *
- * VD starve for name=Dashboard lives in [AaUiHook.rewriteVirtualDisplayArgs]
- * (create / Builder / resize). Here: keep [MEDIA_CAR_APP] **enabled** so AA
- * Now Playing metadata can still egress to the HU/instrument cluster, while
- * hiding leftover Dashboard Presentation windows and swallowing Coolwalk's
- * Dashboard cover assert after `content_bounds` expand.
+ * name=Dashboard 的 VD starve 在 [AaCoolwalkCompositorHook] / [CoolwalkCompositorPolicy]
+ * （create / Builder / resize）里。这里只做两件事：
  *
- * Cluster lyric media shell (`ClusterLyricMediaService`) must stay UI-less:
- * also hide private presentations whose title mentions the shell / media browse
- * for our package — never hide [io.github.nitsuya.aa.display.ui.aa.AaDisplayActivity].
+ * 1. 保持 [MEDIA_CAR_APP] **启用**，让 AA Now Playing 元数据仍能输出到车机；
+ * 2. 隐藏残留的 Dashboard Presentation 窗口，并在 `content_bounds` 扩宽之后
+ *    吞掉 Coolwalk 自己的 Dashboard 覆盖断言。
+ *
+ * 第 2 点是隐藏 UI 控件栈（[AaUiHook.hideAaUiControls]）的必需伴生守卫：
+ * 内容窗口被扩到整块车机宽度后，兄弟 Dashboard 窗口仍保留原右侧几何，
+ * AA 在 `:car` 里断言 `does not mostly cover or provide a hint for one side of`
+ * 并抛 [IllegalStateException] 杀掉 `:car`，`:projection` 随后因死 binder 一并崩溃
+ * （连接 DHU 时表现为 Android Auto 闪退）。
+ *
+ * 绝不隐藏 [io.github.nitsuya.aa.display.ui.aa.AaDisplayActivity] 的投屏窗口。
  */
 object AaMediaPlaceholderHook : AaHook() {
     override val tagName: String = "AAD_AaMediaPlaceholderHook"
-    override val usesDexKit: Boolean = true
-
-    private const val CACHE_INSET = "hook.AaMediaPlaceholderHook.inset_assert"
 
     private const val MEDIA_CAR_APP =
         "com.google.android.apps.auto.components.media.app.MediaCarAppService"
 
     private var insetAssertMethods: List<Method> = emptyList()
 
+    /** 与 [AaUiHook] 同一个开关：只有隐藏 UI 控件栈开启时才需要这个守卫。 */
+    private var hideAaUiControls: Boolean = true
+
     override fun isSupportProcess(processName: String): Boolean {
         return processProjection == processName || processCar == processName
     }
 
-    override fun applyCache(
-        cache: DexKitMethodCache.Session,
-        lpparam: XC_LoadPackage.LoadPackageParam,
-    ): Boolean {
-        val refs = cache.getRefs(CACHE_INSET) ?: return false
-        insetAssertMethods = cache.resolveAll(lpparam.classLoader, refs) ?: return false
-        logDebug(tagName, "inset assert methods=${insetAssertMethods.size} (cache)")
-        return true
-    }
-
-    override fun saveCache(
-        cache: DexKitMethodCache.Session,
-        lpparam: XC_LoadPackage.LoadPackageParam,
-    ) {
-        cache.putRefs(CACHE_INSET, insetAssertMethods)
+    override fun isEnabled(config: SharedPreferences?, processName: String): Boolean {
+        hideAaUiControls = AADisplayConfig.HideAaUiControls.get(config)
+        return hideAaUiControls
     }
 
     override fun loadDexClass(bridge: DexKitBridge, lpparam: XC_LoadPackage.LoadPackageParam) {
@@ -75,26 +69,32 @@ object AaMediaPlaceholderHook : AaHook() {
         ).flatMap { needle ->
             runCatching {
                 bridge.findMethod {
+                    searchPackages = listOf("")
                     matcher { usingStrings(needle) }
                 }.mapNotNull { md ->
                     runCatching { md.getMethodInstance(lpparam.classLoader) }.getOrNull()
                 }
+            }.onFailure { e ->
+                log(tagName, "DexKit inset assert query failed: $needle", e)
             }.getOrDefault(emptyList())
         }.distinctBy {
             "${it.declaringClass.name}#${it.name}#${it.parameterTypes.joinToString { p -> p.name }}"
         }
-        logDebug(tagName, "inset assert methods=${insetAssertMethods.size}")
+        log(
+            tagName,
+            "inset assert methods=${insetAssertMethods.size} " +
+                insetAssertMethods.map { "${it.declaringClass.name}#${it.name}" },
+        )
     }
 
-    override fun hook(lpparam: XC_LoadPackage.LoadPackageParam) {
+    override fun hook(config: SharedPreferences?, lpparam: XC_LoadPackage.LoadPackageParam) {
         ensureMediaCarAppEnabled()
         hideDashboardOnAddView()
         suppressDashboardCoverAssert()
     }
 
     /**
-     * Cluster lyric path needs media-host egress. Older builds disabled this
-     * component and starved Now Playing entirely — re-enable if we left it off.
+     * 车机媒体宿主需要保持可用。旧版本曾禁用该组件，导致 Now Playing 完全断流。
      */
     private fun ensureMediaCarAppEnabled() {
         runCatching {
@@ -119,7 +119,7 @@ object AaMediaPlaceholderHook : AaHook() {
         }
     }
 
-    /** Original inset logic runs; only Dashboard cover [IllegalStateException] is swallowed. */
+    /** 原始 inset 逻辑照常执行；只吞掉 Dashboard 覆盖断言的 [IllegalStateException]。 */
     private fun suppressDashboardCoverAssert() {
         if (insetAssertMethods.isEmpty()) {
             log(tagName, "no Coolwalk inset-assert methods; cover crash not guarded")
@@ -142,7 +142,7 @@ object AaMediaPlaceholderHook : AaHook() {
                             logDebug(
                                 tagName,
                                 "suppress ${method.declaringClass.simpleName}#${method.name} " +
-                                    "Dashboard cover assert"
+                                    "Dashboard cover assert",
                             )
                             dummyInsetResult(method)
                         }
@@ -153,7 +153,7 @@ object AaMediaPlaceholderHook : AaHook() {
                 log(tagName, "hook inset ${method.declaringClass.name}#${method.name} failed", e)
             }
         }
-        logDebug(tagName, "hooked inset assert methods=$hooked/${insetAssertMethods.size}")
+        log(tagName, "hooked inset assert methods=$hooked/${insetAssertMethods.size}")
     }
 
     private fun isDashboardCoverAssert(t: Throwable): Boolean {
@@ -188,7 +188,7 @@ object AaMediaPlaceholderHook : AaHook() {
     private fun isDashboardWindow(lp: WindowManager.LayoutParams?, root: View): Boolean {
         val title = lp?.title?.toString().orEmpty()
         if (title.contains("Dashboard", ignoreCase = true)) return true
-        // Cluster lyric shell / media-browse leftovers — never AaDisplayActivity projection.
+        // 歌词/媒体浏览残留窗口 —— 绝不命中 AaDisplayActivity 投屏。
         if (!title.contains("AaDisplayActivity", ignoreCase = true) &&
             !title.contains("AaMainFragment", ignoreCase = true)
         ) {

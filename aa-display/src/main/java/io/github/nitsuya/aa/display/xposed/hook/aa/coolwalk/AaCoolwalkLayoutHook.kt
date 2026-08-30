@@ -5,8 +5,8 @@ import com.github.kyuubiran.ezxhelper.utils.findMethod
 import com.github.kyuubiran.ezxhelper.utils.hookAfter
 import com.github.kyuubiran.ezxhelper.utils.hookBefore
 import com.github.kyuubiran.ezxhelper.utils.loadClass
-import io.github.nitsuya.aa.display.xposed.util.log
-import io.github.nitsuya.aa.display.xposed.util.logDebug
+import io.github.nitsuya.aa.display.xposed.log
+import io.github.nitsuya.aa.display.xposed.logDebug
 import java.lang.reflect.Modifier
 
 object AaCoolwalkLayoutHook {
@@ -14,7 +14,7 @@ object AaCoolwalkLayoutHook {
     fun install(env: CoolwalkHookEnv) {
         installRailWidthDimens(env)
         hookLayoutInfo(env)
-        hookRadius()
+        hookRadius(env)
     }
 
     fun installRailWidthDimens(env: CoolwalkHookEnv) {
@@ -254,7 +254,7 @@ object AaCoolwalkLayoutHook {
         }
     }
 
-    private fun hookRadius() {
+    private fun hookRadius(env: CoolwalkHookEnv) {
         try {
             val targetClass = loadClass("com.google.android.gms.car.ProjectionWindowDecorationParams")
             val ctor = targetClass.declaredConstructors.firstOrNull { c ->
@@ -274,10 +274,12 @@ object AaCoolwalkLayoutHook {
             )
             ctor.isAccessible = true
             ctor.hookBefore { param ->
-                // Zero horizontal decoration insets (Coolwalk pillar gutters on both sides).
-                if (param.args.size > 0 && param.args[0] is Int) param.args[0] = 0
+                // Zero horizontal decoration insets (Coolwalk pillar gutters on both sides);
+                // 这两项属于全屏铺满的几何回收，与圆角开关无关。
+                if (param.args.isNotEmpty() && param.args[0] is Int) param.args[0] = 0
                 if (param.args.size > 2 && param.args[2] is Int) param.args[2] = 0
-                if (param.args.size > 5 && param.args[5] is Int) param.args[5] = 0
+                // arg5 是圆角半径，跟随 AADisplayConfig.ForceRightAngle。
+                if (env.forceRightAngle && param.args.size > 5 && param.args[5] is Int) param.args[5] = 0
             }
         } catch (e: Throwable) {
             log(CoolwalkHookEnv.TAG, "ProjectionWindowDecorationParams", e)

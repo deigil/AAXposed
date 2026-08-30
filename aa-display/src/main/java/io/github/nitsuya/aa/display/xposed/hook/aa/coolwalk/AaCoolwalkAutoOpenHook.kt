@@ -12,8 +12,8 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.nitsuya.aa.display.BuildConfig
 import io.github.nitsuya.aa.display.service.AaActivityService
 import io.github.nitsuya.aa.display.util.AABroadcastConst
-import io.github.nitsuya.aa.display.xposed.util.log
-import io.github.nitsuya.aa.display.xposed.util.logDebug
+import io.github.nitsuya.aa.display.xposed.log
+import io.github.nitsuya.aa.display.xposed.logDebug
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Modifier
 
@@ -26,9 +26,14 @@ object AaCoolwalkAutoOpenHook {
     private var lastFullBleedRelaunchScheduleUptimeMs = -1L
 
     fun install(env: CoolwalkHookEnv, lpparam: XC_LoadPackage.LoadPackageParam) {
-        logDebug(CoolwalkHookEnv.TAG, "AaUiHook: AutoOpen always-on startMethod=${env.startMethod?.name}")
+        logDebug(
+            CoolwalkHookEnv.TAG,
+            "AaUiHook: AutoOpen startMethod=${env.startMethod?.name} enabled=${env.autoOpenEnabled}",
+        )
         registerAutoOpenShownReceiver(env)
-        hookCarSystemUiConnectedKick(env)
+        if (env.autoOpenEnabled) {
+            hookCarSystemUiConnectedKick(env)
+        }
     }
 
     fun scheduleAutoOpenIfNeeded(
@@ -36,6 +41,7 @@ object AaCoolwalkAutoOpenHook {
         reason: String = "unknown",
         bypassRearmGap: Boolean = false,
     ) {
+        if (!env.autoOpenEnabled) return
         if (env.startMethod == null) {
             log(CoolwalkHookEnv.TAG, "AaUiHook: AutoOpen skip ($reason): startMethod null")
             return
@@ -90,6 +96,7 @@ object AaCoolwalkAutoOpenHook {
      *   still false — the CarActivity presentation VD may already exist at content-slot width.
      */
     fun scheduleFullBleedRelaunch(env: CoolwalkHookEnv, reason: String, force: Boolean = false) {
+        if (!env.autoOpenEnabled) return
         if (env.startMethod == null) return
         if (!force && !env.mAaDisplayShownThisSession) {
             logDebug(CoolwalkHookEnv.TAG, "AaUiHook: full-bleed relaunch ($reason) → AutoOpen (not shown)")

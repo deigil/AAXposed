@@ -1,8 +1,8 @@
 package io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk
 
 import com.github.kyuubiran.ezxhelper.utils.hookBefore
-import io.github.nitsuya.aa.display.xposed.util.log
-import io.github.nitsuya.aa.display.xposed.util.logDebug
+import io.github.nitsuya.aa.display.xposed.log
+import io.github.nitsuya.aa.display.xposed.logDebug
 import java.lang.reflect.Method
 
 /**

@@ -3,8 +3,8 @@ package io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk
 import android.graphics.Rect
 import com.github.kyuubiran.ezxhelper.utils.hookBefore
 import io.github.nitsuya.aa.display.util.DisplayProfileSettle
-import io.github.nitsuya.aa.display.xposed.util.log
-import io.github.nitsuya.aa.display.xposed.util.logDebug
+import io.github.nitsuya.aa.display.xposed.log
+import io.github.nitsuya.aa.display.xposed.logDebug
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
 

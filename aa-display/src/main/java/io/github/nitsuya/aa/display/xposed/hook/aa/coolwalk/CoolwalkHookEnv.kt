@@ -8,9 +8,8 @@ import com.github.kyuubiran.ezxhelper.utils.argTypes
 import com.github.kyuubiran.ezxhelper.utils.getIdByName
 import com.github.kyuubiran.ezxhelper.utils.loadClass
 import com.github.kyuubiran.ezxhelper.utils.staticMethod
-import io.github.nitsuya.aa.display.ui.aa.split.SplitPane
-import io.github.nitsuya.aa.display.xposed.util.log
-import io.github.nitsuya.aa.display.xposed.util.logDebug
+import io.github.nitsuya.aa.display.xposed.log
+import io.github.nitsuya.aa.display.xposed.logDebug
 import java.lang.reflect.Constructor
 import java.lang.reflect.Field
 import java.lang.reflect.Method
@@ -27,22 +26,8 @@ class CoolwalkHookEnv {
     @Volatile var layoutResourceIdField: Field? = null
     var contentBoundsMethods: List<Method> = emptyList()
     var facetBarSurfaceMethods: List<Method> = emptyList()
-    var huTouchDispatchMethod: Method? = null
     /** Coolwalk compositor window bounds class (`{blX=` toString); may be null if DexKit miss. */
     var projectionBoundsClassName: String? = null
-
-    @Volatile var mRailHostDownTime = 0L
-    @Volatile var mHuRailGesture = false
-    @Volatile var mHuPeelGesture = false
-    @Volatile var mAaUiRailConsume = false
-    @Volatile var mCachedFullscreenPane: Int = SplitPane.FULLSCREEN_NONE
-    @Volatile var mSplitStateSeen = false
-    val mRailMoveLock = Any()
-    var mPendingRailMove: android.view.MotionEvent? = null
-    @Volatile var mRailMoveGeneration = 0
-
-    var mSplitStateReceiver: android.content.BroadcastReceiver? = null
-    var mRailConsumeReceiver: android.content.BroadcastReceiver? = null
 
     var resLayoutLeftResourceId: Int = 0
     var resLayoutRightResourceId: Int = 0
@@ -65,20 +50,15 @@ class CoolwalkHookEnv {
     @Volatile var mLastProjectionConfigRewrite: String? = null
 
     var mAutoOpenSessionAtMs = 0L
+    /** 对应 AADisplayConfig.AutoOpen：false 时不主动拉起 AADisplay，只做几何调整。 */
+    var autoOpenEnabled: Boolean = true
+    /** 对应 AADisplayConfig.ForceRightAngle：仅控制圆角（decoration radius），不影响左右留白回收。 */
+    var forceRightAngle: Boolean = true
     @Volatile var mAaDisplayShownThisSession = false
     @Volatile var mAutoOpenArmed = false
     var mAutoOpenShownReceiver: android.content.BroadcastReceiver? = null
     var mCarConnectedKickHooked = false
     var mCarConnectedListenerHooked = false
-
-    val mRailMoveFrameCallback = android.view.Choreographer.FrameCallback {
-        AaCoolwalkHuTouchHook.flushPendingRailMove(this)
-    }
-    val mRailMovePostToFrame = Runnable {
-        val choreographer = android.view.Choreographer.getInstance()
-        choreographer.removeFrameCallback(mRailMoveFrameCallback)
-        choreographer.postFrameCallback(mRailMoveFrameCallback)
-    }
 
     fun layoutWidthPx(): Int =
         kotlin.math.max(

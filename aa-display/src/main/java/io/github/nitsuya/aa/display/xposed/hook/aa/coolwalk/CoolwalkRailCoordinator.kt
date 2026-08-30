@@ -7,7 +7,7 @@ import com.github.kyuubiran.ezxhelper.init.InitFields
 import io.github.nitsuya.aa.display.util.CoolwalkRailStore
 import io.github.nitsuya.aa.display.util.DisplayProfileSettle
 import io.github.nitsuya.aa.display.xposed.CoreManager
-import io.github.nitsuya.aa.display.xposed.util.logDebug
+import io.github.nitsuya.aa.display.xposed.logDebug
 
 /**
  * Single source of Coolwalk rail state inside gearhead hooks.
