@@ -16,6 +16,22 @@ object SharedPreferencesAccess {
         }
     }
 
+    /**
+     * PreferenceManager 只接受一个 mode 常量，且在内部 getSharedPreferences 时才抛
+     * SecurityException（LSPosed 未激活时 MODE_WORLD_READABLE 在 N+ 上不被允许），
+     * 无法就地 catch。这里先探测一次，把可用的 mode 交给 PreferenceManager。
+     */
+    fun resolveModeForHooks(context: Context, name: String): Int {
+        return try {
+            @Suppress("DEPRECATION")
+            context.getSharedPreferences(name, Context.MODE_WORLD_READABLE)
+            @Suppress("DEPRECATION")
+            Context.MODE_WORLD_READABLE
+        } catch (_: SecurityException) {
+            Context.MODE_PRIVATE
+        }
+    }
+
     fun makeReadableForHooks(context: Context, name: String): Boolean {
         return try {
             @Suppress("DEPRECATION")

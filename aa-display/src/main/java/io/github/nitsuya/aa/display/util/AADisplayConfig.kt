@@ -23,8 +23,30 @@ sealed class AADisplayConfig<T>(val key: String) {
     object ScreenOffReplaceLockScreen: BooleanConfig("ScreenOffReplaceLockScreen", false)
     object CloseLauncherDashboard: BooleanConfig("CloseLauncherDashboard", true)
     object ForceRightAngle: BooleanConfig("ForceRightAngle", true)
-    object DisplayImePolicy: IntConfig("DisplayImePolicy", 0) //WindowManager.DISPLAY_IME_POLICY_LOCAL:0, WindowManager.DISPLAY_IME_POLICY_FALLBACK_DISPLAY:1
-    object VoiceAssistShell: StringConfig("VoiceAssistShell", null)
+    // true：隐藏车机端 Coolwalk 侧边栏/UI 控件，投屏按整块车机宽度全屏；
+    //       控制方案交给手机上的悬浮窗（DisplayWindow）。
+    // false：回到旧行为，在车机侧边栏重建 home/全屏/返回/语音助手图标。
+    object HideAaUiControls: BooleanConfig("HideAaUiControls", true)
+    // 投屏虚拟屏的输入法归属，见 [io.github.nitsuya.aa.display.ui.aa.AaVirtualDisplayAdapter.onConnected]
+    // 0 = DISPLAY_IME_POLICY_LOCAL：键盘画在投屏那块 VirtualDisplay 上（挡掉车机半屏）
+    // 1 = DISPLAY_IME_POLICY_FALLBACK_DISPLAY：键盘落到 default display，即手机主屏（默认，与 nitsuya 上游一致）
+    // 2 = DISPLAY_IME_POLICY_HIDE：该屏不显示输入法
+    object DisplayImePolicy: IntConfig("DisplayImePolicy", 1)
+    // MIUI/HyperOS 护眼模式是 SF 层 colorTransformMatrix，只作用于 display 0 后由 SF
+    // 广播到所有屏，投屏画面必然跟着变黄，且无 per-display 排除接口。
+    // true：投屏期间临时关闭护眼总开关（screen_paper_mode_enabled），断开后按原值恢复；
+    //       代价是抑制为全局的 —— 投屏期间手机自己的屏幕也暂时没有护眼效果。
+    // 见 [io.github.nitsuya.aa.display.util.EyeCareSuspender]
+    object SuspendEyeCareOnProjection: BooleanConfig("SuspendEyeCareOnProjection", true)
+    // Gboard 的键盘形态由持久化的 keyboard_mode_landscape 和 float_keyboard_in_* 决定，
+    // 而设备形态取自机身（投屏时仍是 DEVICE_PHONE），投屏那块横屏 VirtualDisplay 因此
+    // 直接命中“手机 + 横屏”这套键，键盘会以悬浮模式打开。
+    // true：投屏期间把 Gboard 读到的悬浮形态改回普通形态（不写任何 Gboard 设置）；
+    //       代价是投屏期间手机自己横屏也不会悬浮。
+    // 见 [io.github.nitsuya.aa.display.xposed.hook.GboardImeHook]
+    object FixGboardFloatingIme: BooleanConfig("FixGboardFloatingIme", true)
+    // 默认走小爱语音助手，与 nitsuya 上游一致；支持 ${DisplayId} 占位符
+    object VoiceAssistShell: StringConfig("VoiceAssistShell", "am start com.miui.voiceassist/com.xiaomi.voiceassistant.CTAAlertActivity")
     object CreateVirtualDisplayBefore: ArrayStringConfig("CreateVirtualDisplayBefore")
     object DestroyVirtualDisplayAfter: ArrayStringConfig("DestroyVirtualDisplayAfter")
     object ComGoogleAndroidGmsCarProps: PropertiesConfig("ComGoogleAndroidGmsCarProps")

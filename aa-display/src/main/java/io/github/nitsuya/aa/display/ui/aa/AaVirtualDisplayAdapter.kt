@@ -42,7 +42,13 @@ class AaVirtualDisplayAdapter(
     companion object {
         const val TAG = "AADisplay_AaVirtualDisplayAdapter"
         private const val WINDOWING_MODE_PINNED = 2
+
+        /** 输入法渲染在投屏 VD 自己身上。 */
         private const val DISPLAY_IME_POLICY_LOCAL = 0
+        /** 输入法交给 fallback display，即 default display / 手机主屏。 */
+        private const val DISPLAY_IME_POLICY_FALLBACK_DISPLAY = 1
+        /** 该屏不显示输入法。 */
+        private const val DISPLAY_IME_POLICY_HIDE = 2
 
         /** Package names to ignore in recent task list */
         private val IGNORE_RECENT_PACKAGE = setOf(
@@ -155,11 +161,15 @@ class AaVirtualDisplayAdapter(
 
         try {
             Instances.iWindowManager.apply {
-                val configuredImePolicy = AADisplayConfig.DisplayImePolicy.get(config)
-                if (configuredImePolicy != DISPLAY_IME_POLICY_LOCAL) {
-                    log(TAG, "override display IME policy: $configuredImePolicy -> $DISPLAY_IME_POLICY_LOCAL")
+                // 与 nitsuya 上游一致：按配置下发，不再强制 LOCAL。
+                // 默认 FALLBACK_DISPLAY(1)，虚拟屏唤起的输入法落到手机主屏，
+                // 车机那块 1280x720 横屏不再被键盘挡住半屏。
+                val imePolicy = AADisplayConfig.DisplayImePolicy.get(config).let {
+                    if (it in DISPLAY_IME_POLICY_LOCAL..DISPLAY_IME_POLICY_HIDE) it
+                    else DISPLAY_IME_POLICY_FALLBACK_DISPLAY
                 }
-                setDisplayImePolicy(mDisplayId, DISPLAY_IME_POLICY_LOCAL)
+                log(TAG, "set display IME policy: $imePolicy")
+                setDisplayImePolicy(mDisplayId, imePolicy)
                 setShouldShowWithInsecureKeyguard(mDisplayId, false)
                 setShouldShowSystemDecors(mDisplayId, false)
             }
@@ -344,11 +354,15 @@ class AaVirtualDisplayAdapter(
         }
     }
 
-    fun getRecentTask(): RecentTask {
+    /**
+     * @param withSnapshot 是否连带取任务快照。手机端镜像小窗只显示图标，
+     *   传 false 可以省掉每个任务一次 getTaskSnapshot IPC 和 HardwareBuffer 包装。
+     */
+    fun getRecentTask(withSnapshot: Boolean = true): RecentTask {
         return try{
             RecentTask(
-                recentTaskInfo(0),
-                if(mDisplayId == Display.INVALID_DISPLAY) emptyList() else recentTaskInfo(mDisplayId)
+                recentTaskInfo(0, withSnapshot),
+                if(mDisplayId == Display.INVALID_DISPLAY) emptyList() else recentTaskInfo(mDisplayId, withSnapshot)
             )
         } catch (e: Throwable){
             log(TAG, "RecentTask Exception", e)
@@ -701,7 +715,7 @@ class AaVirtualDisplayAdapter(
      * Get recent task list for the specified display
      * Filter out ignored package names and Home package app
      */
-    private fun recentTaskInfo(displayId: Int): List<RecentTaskInfo> {
+    private fun recentTaskInfo(displayId: Int, withSnapshot: Boolean = true): List<RecentTaskInfo> {
         val allRootTaskInfosOnDisplay = Instances.iActivityTaskManager.getAllRootTaskInfosOnDisplay(displayId)
         log(TAG, "RecentTask $displayId, ${allRootTaskInfosOnDisplay.size}")
         return allRootTaskInfosOnDisplay
@@ -728,7 +742,7 @@ class AaVirtualDisplayAdapter(
 
                 val packageName = topActivity.packageName
 
-                var snapshot: Bitmap? = runCatching {
+                var snapshot: Bitmap? = if (!withSnapshot) null else runCatching {
                     try {
                         if (Build.VERSION.SDK_INT >= 34) {//14+
                             Instances.iActivityTaskManager.getTaskSnapshot(taskInfo.taskId, true, true)
