@@ -73,9 +73,13 @@
   `:projection` 及另外四个 gearhead 进程全程同 pid 存活。
   守卫只命中一次：`repair Constraints w[1..1]→[1..1] h[0..-5]→[0..0]`，
   附带的调用栈落在分栏容器测量 → `Constraints.copy` → `dispatchDraw` 这条预期路径上。
-- 画布：`displayProfile locked: 1200*720,160 (reported=1200 rail=0 full=1200)`、
+- 画布（未加 `CoolwalkHuScreenParamsHook` 的那一轮）：
+  `displayProfile locked: 1200*720,160 (reported=1200 rail=0 full=1200)`、
   `content_bounds=Rect(0, 0 - 1200, 720)`、`pillar_width=0`、rail 宽度回收为 0。
 - 投屏屏上的应用（车机启动器 / 高德）`mBounds=Rect(0, 0 - 1200, 720)`、`letterBoxed=false`。
+- 右侧黑边：补上 `CoolwalkHuScreenParamsHook` 后重跑 DHU，`:car` 侧读到车机全宽 1280，
+  `CoolwalkProjectionBoundsHook` / `CoolwalkDrawingSpecWiden` 把内容槽 1200 撑回 1280，
+  日志确认窗口右边界不再短一条 rail；肉眼二次确认未做。
 - 连续两次重启无 `system_server` 软重启。
 
 ## 0.24 (2026-08-30)
