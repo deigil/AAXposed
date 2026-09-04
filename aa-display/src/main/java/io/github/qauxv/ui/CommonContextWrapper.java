@@ -33,11 +33,10 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.github.kyuubiran.ezxhelper.init.EzXHelperInit;
-
 import java.util.Objects;
 
 import io.github.nitsuya.aa.display.R;
+import io.github.nitsuya.aa.display.xposed.ModuleAssets;
 import io.github.qauxv.util.SavedInstanceStatePatchedClassReferencer;
 
 /**
@@ -69,7 +68,11 @@ public class CommonContextWrapper extends ContextThemeWrapper {
         if (configuration != null) {
             mOverrideResources = base.createConfigurationContext(configuration).getResources();
         }
-        EzXHelperInit.INSTANCE.addModuleAssetPath(getResources());
+        // 经 ModuleAssets 包装：modulePath 未初始化时它只记日志。直接调
+        // EzXHelperInit 会抛 UninitializedPropertyAccessException，而本构造器的调用点
+        // 之一在 system_server 主 looper 上（CoreManagerService.onCreateDisplay），
+        // 异常逃出去就是整机软重启。
+        ModuleAssets.addModuleAssetPath(getResources());
     }
 
     private ClassLoader mXref = null;

@@ -7,11 +7,9 @@ import com.github.kyuubiran.ezxhelper.utils.findMethod
 import com.github.kyuubiran.ezxhelper.utils.hookAfter
 import com.github.kyuubiran.ezxhelper.utils.hookBefore
 import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XSharedPreferences
-import de.robv.android.xposed.callbacks.XC_LoadPackage
-import io.github.nitsuya.aa.display.BuildConfig
 import io.github.nitsuya.aa.display.util.AADisplayConfig
 import io.github.nitsuya.aa.display.util.ProjectionState
+import io.github.nitsuya.aa.display.xposed.HookPreferences
 import io.github.nitsuya.aa.display.xposed.log
 import io.github.nitsuya.aa.display.xposed.logDebug
 
@@ -102,7 +100,7 @@ object GboardImeHook : BaseHook() {
         "tablet_float_keyboard_default",
     )
 
-    /** 配置开关缓存，避免每次 preference 读取都碰 XSharedPreferences。 */
+    /** 配置开关缓存，避免每次 preference 读取都碰远端配置。 */
     private var mEnabled: Boolean = true
 
     /** [ProjectionState] 的本地缓存，由 ContentObserver 维护；热路径不走 ContentProvider。 */
@@ -115,14 +113,8 @@ object GboardImeHook : BaseHook() {
 
     private var mLastPollUptimeMs: Long = 0L
 
-    override fun init(lpparam: XC_LoadPackage.LoadPackageParam) {
-        val configPreferences = XSharedPreferences(BuildConfig.APPLICATION_ID, AADisplayConfig.ConfigName)
-        mEnabled = if (configPreferences.file.canRead()) {
-            runCatching { configPreferences.reload() }
-            AADisplayConfig.FixGboardFloatingIme.get(configPreferences)
-        } else {
-            AADisplayConfig.FixGboardFloatingIme.get(null)
-        }
+    override fun init(target: HookTarget) {
+        mEnabled = AADisplayConfig.FixGboardFloatingIme.get(HookPreferences.get())
         if (!mEnabled) {
             log(tagName, "disabled by config")
             return

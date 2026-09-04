@@ -1,12 +1,9 @@
 package io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk
 
-import com.github.kyuubiran.ezxhelper.init.InitFields
 import com.github.kyuubiran.ezxhelper.utils.findMethod
 import com.github.kyuubiran.ezxhelper.utils.hookAfter
 import com.github.kyuubiran.ezxhelper.utils.hookBefore
-import io.github.nitsuya.aa.display.util.CoolwalkRailStore
 import io.github.nitsuya.aa.display.util.DisplayProfileSettle
-import io.github.nitsuya.aa.display.xposed.log
 import io.github.nitsuya.aa.display.xposed.logDebug
 import java.lang.reflect.Modifier
 import java.util.concurrent.ConcurrentHashMap
@@ -16,6 +13,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Widen gearhead [DrawingSpec] from content slot (e.g. 1173) to full HU (1280) once
  * content_bounds reclaim has started on this connection. Must run in gearhead where
  * the spec is constructed; AADisplay unmarshals via [Parcelable.Creator] — hook both.
+ *
+ * 只在 gearhead 侧安装。AADisplay 自己的进程无法被 hook（LSPosed 不允许把模块自身
+ * 选进作用域），投屏尺寸由 system_server 里的 [DisplayProfileSettle] / `resolveDisplayProfile`
+ * 最终裁定，不依赖模块进程侧的 spec 改写。
  */
 object CoolwalkDrawingSpecWiden {
 
@@ -23,39 +24,11 @@ object CoolwalkDrawingSpecWiden {
     private const val TAG = "AAD_AaDisplayVD"
 
     private val gearheadInstalled = AtomicBoolean(false)
-    private val aaDisplayInstalled = AtomicBoolean(false)
     private val creatorHookedClasses = ConcurrentHashMap.newKeySet<Class<*>>()
 
     fun installGearhead(classLoader: ClassLoader) {
         if (!gearheadInstalled.compareAndSet(false, true)) return
         installOnClass(classLoader, ::resolveTargetWidthGearhead, "gearhead")
-    }
-
-    /** AADisplay loads DrawingSpec from gearhead dex after Application.onCreate. */
-    fun installAaDisplayLazy() {
-        if (!aaDisplayInstalled.compareAndSet(false, true)) return
-        val loader = runCatching { InitFields.appContext.classLoader }.getOrNull() ?: return
-        if (installOnClass(loader, ::resolveTargetWidthAaDisplay, "aadisplay-immediate")) {
-            return
-        }
-        hookClassLoaderForDrawingSpec(loader)
-        logDebug(TAG, "DrawingSpec lazy loadClass hook armed (aadisplay)")
-    }
-
-    private fun hookClassLoaderForDrawingSpec(loader: ClassLoader) {
-        runCatching {
-            findMethod(ClassLoader::class.java) {
-                name == "loadClass" && parameterCount == 2 &&
-                    parameterTypes[0] == String::class.java &&
-                    parameterTypes[1] == Boolean::class.javaPrimitiveType
-            }.hookAfter { param ->
-                if (param.args[0] != DRAWING_SPEC) return@hookAfter
-                val clazz = param.result as? Class<*> ?: return@hookAfter
-                installOnClass(clazz.classLoader ?: loader, ::resolveTargetWidthAaDisplay, "aadisplay-lazy")
-            }
-        }.onFailure { e ->
-            log(TAG, "DrawingSpec loadClass hook failed", e)
-        }
     }
 
     private fun installOnClass(
@@ -155,57 +128,6 @@ object CoolwalkDrawingSpecWiden {
         return resolveTargetWidth(width, CoolwalkRailCoordinator.effectiveSnapshot())
     }
 
-    private fun resolveTargetWidthAaDisplay(width: Int, height: Int): Int {
-        // Samsung / OEM Settings.Global may reject our keys (reads stay 0). Prefer IPC.
-        val ipc = runCatching {
-            io.github.nitsuya.aa.display.xposed.CoreManager.tryGetCoolwalkRailSnapshot()
-        }.getOrNull()?.let { CoolwalkRailStore.snapshotFromWire(it) }
-        val cr = runCatching { InitFields.appContext.contentResolver }.getOrNull()
-        val fromSettings = cr?.let {
-            CoolwalkRailStore.snapshotWithSession(CoolwalkRailStore.read(it), it)
-        }
-        val snap = mergeAaDisplayWidenSnapshot(ipc, fromSettings, width)
-        return resolveTargetWidth(width, snap)
-    }
-
-    /**
-     * When Settings.Global is empty but system_server has full HU (Samsung), still widen
-     * once the gap looks like a content slot — treat as Reclaiming for [resolveTargetWidth].
-     */
-    internal fun mergeAaDisplayWidenSnapshot(
-        ipc: RailSnapshot?,
-        fromSettings: RailSnapshot?,
-        contentWidth: Int,
-    ): RailSnapshot {
-        val base = when {
-            ipc != null && ipc.fullHuWidthPx > 0 -> ipc
-            fromSettings != null && fromSettings.fullHuWidthPx > 0 -> fromSettings
-            ipc != null -> ipc
-            fromSettings != null -> fromSettings
-            else -> return RailSnapshot()
-        }
-        val other = if (base === ipc) fromSettings else ipc
-        val reclaimPhase = sequenceOf(base.phase, other?.phase).firstOrNull {
-            it == RailPhase.Reclaiming || it == RailPhase.FullBleed
-        }
-        val stable = maxOf(base.fullBleedStableCount, other?.fullBleedStableCount ?: 0)
-        val full = maxOf(base.fullHuWidthPx, other?.fullHuWidthPx ?: 0)
-        val needsWiden = full > 0 && DisplayProfileSettle.isContentSlotVsFull(contentWidth, full)
-        val phase = when {
-            reclaimPhase != null -> reclaimPhase
-            needsWiden && (stable > 0 || base.touchRailWidthPx > 1 || (other?.touchRailWidthPx ?: 0) > 1) ->
-                RailPhase.Reclaiming
-            needsWiden && full > contentWidth -> RailPhase.Reclaiming
-            else -> base.phase
-        }
-        return base.copy(
-            phase = phase,
-            fullHuWidthPx = full,
-            touchRailWidthPx = maxOf(base.touchRailWidthPx, other?.touchRailWidthPx ?: 0),
-            fullBleedStableCount = maxOf(stable, if (phase == RailPhase.Reclaiming || phase == RailPhase.FullBleed) 1 else 0),
-        )
-    }
-
     /**
      * Widen content-slot widths after reclaim. [RailPhase.ReconnectSettling] with
      * [RailSnapshot.fullHuWidthPx] cleared (true soft reconnect) does not widen;
@@ -224,6 +146,12 @@ object CoolwalkDrawingSpecWiden {
             // True reconnect clears fullHu; if fullHu is known, treat as reclaim-in-progress
             // (false FullBleed demotion or bounds expanded while IPC still settling).
             RailPhase.ReconnectSettling -> full
+            // No rail lifecycle ran in this process — `:car` normally stays here, because the
+            // starve/reclaim events all fire in `:projection` and the IPC that would carry them
+            // across is refused (see BridgeService.appUid). With the head-unit width known from
+            // CoolwalkHuScreenParamsHook and no pixels currently reserved for a rail, a
+            // one-rail-short DrawingSpec is the right-edge black bar, so widen it too.
+            RailPhase.Bootstrapping -> if (snap.effectiveRailWidthPx <= 1) full else width
             else -> width
         }
         return target

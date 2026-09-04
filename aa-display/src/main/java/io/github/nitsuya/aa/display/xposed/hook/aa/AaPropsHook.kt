@@ -10,9 +10,9 @@ import com.github.kyuubiran.ezxhelper.utils.findMethod
 import com.github.kyuubiran.ezxhelper.utils.hookAfter
 import com.github.kyuubiran.ezxhelper.utils.loadClass
 import com.github.kyuubiran.ezxhelper.utils.putObject
-import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.nitsuya.aa.display.util.AADisplayConfig
 import io.github.nitsuya.aa.display.xposed.hook.AaHook
+import io.github.nitsuya.aa.display.xposed.hook.HookTarget
 import io.github.nitsuya.aa.display.xposed.log
 import org.luckypray.dexkit.DexKitBridge
 import org.luckypray.dexkit.query.FindMethod
@@ -33,7 +33,7 @@ object AaPropsHook: AaHook() {
         return true
     }
 
-    override fun loadDexClass(bridge: DexKitBridge, lpparam: XC_LoadPackage.LoadPackageParam) {
+    override fun loadDexClass(bridge: DexKitBridge, target: HookTarget) {
         val methodMatcher = MethodMatcher().usingStrings {
             add(
                 "Must call PhenotypeContext.setContext() first",
@@ -68,7 +68,7 @@ object AaPropsHook: AaHook() {
         }
     }
 
-    override fun hook(config: SharedPreferences?, lpparam: XC_LoadPackage.LoadPackageParam) {
+    override fun hook(config: SharedPreferences?, target: HookTarget) {
         hookComGoogleAndroidProjectionGearheadProps(config)
         hookComGoogleAndroidGmsCarProps(config)
     }

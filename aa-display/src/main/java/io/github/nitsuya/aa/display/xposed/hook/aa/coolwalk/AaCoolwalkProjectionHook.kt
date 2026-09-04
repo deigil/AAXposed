@@ -18,12 +18,50 @@ import kotlin.math.abs
 object AaCoolwalkProjectionHook {
 
     /**
-     * Rect ctor/set hooks call [applyExpandedContentBounds] which mutates via [Rect.set].
-     * Without this guard, nested Rect allocation during expand (or sync side-effects) recurses
-     * until :projection StackOverflowError and DHU drops the GAL transport.
+     * content_bounds / content_insets rewriting is **keyed only**: a Rect is rewritten solely
+     * when gearhead hands it to us under one of [CoolwalkHookEnv.PROJECTION_CONFIG_KEYS]
+     * (config Bundle, `Bundle.putParcelable` / `getParcelable`, `Intent.putExtra`,
+     * `ArrayMap.put`).
+     *
+     * There used to be an unkeyed fallback: process-wide hooks on `Rect(int,int,int,int)` and
+     * `Rect.set`, gated by a ThreadLocal "projection config publication" window, that accepted
+     * any rect whose shape matched rail-inset content_bounds and expanded it in place. It is
+     * gone, and must not come back — DHU field evidence (`gearhead:projection` pids
+     * 10039 / 32214 / 1844, three crash-restart cycles in 26s):
+     *
+     * - gearhead's own `nqm#T` allocates `Rect(80, 0, 1280, 720)` — a genuine 1200px content
+     *   slot inside a 1280px window — while the DexKit-hit config method is on the stack, so
+     *   the window was open at exactly the wrong moment;
+     * - that rect is *shape-identical* to real rail-inset content_bounds (`top == 0`,
+     *   `bottom == fullH`, `right == fullW`, `left` a plausible single rail), so no amount of
+     *   tightening in `looksLikeHuContentBounds` could separate the two;
+     * - the accept expanded it in place to `(0, 0, 1280, 720)`, i.e. told gearhead pane 1 wants
+     *   1280px while only 1200px was actually available, so the two-pane measure produced
+     *   `available − pane1 = −80` and Compose threw `IllegalArgumentException: maxWidth must be
+     *   >= than minWidth` on the main thread inside `dispatchDraw` (`dls.a` ← … ←
+     *   `czw.dispatchDraw`), killing `:projection` and dropping the GAL transport;
+     * - the window it was scoped to bought nothing: `fixProjectionConfigBundle` never rewrote
+     *   anything in that flow (zero "projection config rewrite" lines in 359k logcat lines),
+     *   so 100% of the rewrites — and the crash — came from the unkeyed path alone.
+     *
+     * Rail reclaim does not depend on it: [CoolwalkProjectionBoundsHook] (compositor `blX`/`trX`,
+     * a typed ctor on the DexKit-resolved bounds class), [AaCoolwalkLayoutHook] (LayoutInfo +
+     * rail width dimens → 0), [CoolwalkDrawingSpecWiden], [AaCoolwalkCompositorHook] (FacetBar VD
+     * starve) and [CoolwalkFacetChrome] (gutter reclaim) all act on identified targets.
+     *
+     * Removing the unkeyed path was necessary but not sufficient: with it gone (e3 / 3014, zero
+     * `unkeyed Rect` accepts, one rewrite instead of twelve) `:projection` pid 10400 still died the
+     * same way. e2 / 3016 then capped the keyed rewrite to the incoming width as a second attempt
+     * at the crash — and `full-e4.log` shows e4 shipped that cap and *still* crashed three times
+     * with the identical stack, so the cap never bought crash safety. What did was
+     * [CoolwalkComposeConstraintsGuard], clamping the negative-span `Constraints` tuples at the two
+     * validator entry points. The cap only pinned the session to a 1200px canvas on a 1280px HU,
+     * i.e. it *was* the right-edge black bar, so it is gone again: content_bounds is moved to the
+     * origin **and** grown to full HU, as in the crash-free e1 canvas
+     * (`content_bounds=Rect(0, 0, 1280, 720)`, `DrawingSpec{width=1280}`,
+     * `displayProfile locked: 1280*720`). [CoolwalkDrawingSpecWiden] still widens `DrawingSpec`
+     * directly for the paths content_bounds does not reach.
      */
-    private val contentBoundsRectHookGuard = ThreadLocal.withInitial { java.lang.Boolean.FALSE }
-
     fun install(env: CoolwalkHookEnv) {
         CoolwalkRailCoordinator.syncExternalTruth()
         hookContentBounds(env)
@@ -31,7 +69,9 @@ object AaCoolwalkProjectionHook {
 
     /**
      * C1: primary path is [fixProjectionConfigBundle] on DexKit contentBoundsMethods.
-     * Bundle.putParcelable / getParcelable kept as backup; ArrayMap + Rect ctor for reconnect republication.
+     * Bundle.putParcelable / getParcelable / Intent.putExtra / ArrayMap.put are keyed backups for
+     * reconnect republication. Every path here has a key proving the Rect is content_bounds /
+     * content_insets — see the [AaCoolwalkProjectionHook] header for why there is no unkeyed one.
      */
     private fun hookContentBounds(env: CoolwalkHookEnv) {
         for (method in env.contentBoundsMethods) {
@@ -156,36 +196,6 @@ object AaCoolwalkProjectionHook {
         } catch (e: Throwable) {
             log(CoolwalkHookEnv.TAG, "AaUiHook: hook ArrayMap.put failed", e)
         }
-
-        try {
-            Rect::class.java.getDeclaredConstructor(
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-            ).hookAfter { param ->
-                maybeExpandContentBoundsRect(env, param.thisObject as? Rect ?: return@hookAfter)
-            }
-            logDebug(CoolwalkHookEnv.TAG, "AaUiHook: hooked Rect(int,int,int,int) for content_bounds")
-        } catch (e: Throwable) {
-            log(CoolwalkHookEnv.TAG, "AaUiHook: hook Rect ctor failed", e)
-        }
-
-        // Backup: mutate HU-sized rail-inset rects built outside Bundle (reconnect republication).
-        try {
-            Rect::class.java.getDeclaredMethod(
-                "set",
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-            ).hookAfter { param ->
-                maybeExpandContentBoundsRect(env, param.thisObject as? Rect ?: return@hookAfter)
-            }
-            logDebug(CoolwalkHookEnv.TAG, "AaUiHook: hooked Rect.set for content_bounds mutate (backup)")
-        } catch (e: Throwable) {
-            log(CoolwalkHookEnv.TAG, "AaUiHook: hook Rect.set failed", e)
-        }
     }
 
     private fun markProjectionReconnectIfNeeded(env: CoolwalkHookEnv, source: String) {
@@ -204,32 +214,6 @@ object AaCoolwalkProjectionHook {
             )
         }
         AaCoolwalkAutoOpenHook.scheduleAutoOpenIfNeeded(env, "projection-reconnect")
-    }
-
-    private fun maybeExpandContentBoundsRect(env: CoolwalkHookEnv, rect: Rect) {
-        if (contentBoundsRectHookGuard.get() == java.lang.Boolean.TRUE) return
-        try {
-            contentBoundsRectHookGuard.set(java.lang.Boolean.TRUE)
-            if (!looksLikeExpandableContentBounds(env, rect)) return
-            applyExpandedContentBounds(env, rect)
-        } finally {
-            contentBoundsRectHookGuard.set(java.lang.Boolean.FALSE)
-        }
-    }
-
-    private fun looksLikeExpandableContentBounds(env: CoolwalkHookEnv, rect: Rect): Boolean {
-        if (rect.left <= 0 && rect.top <= 0) {
-            val full = CoolwalkRailCoordinator.observedFullHuWidthPx()
-                .takeIf { it > 0 } ?: env.layoutWidthPx()
-            if (full > 0 && abs(rect.right - full) <= 2) return false
-        }
-        CoolwalkRailCoordinator.syncExternalTruth(InitFields.appContext.contentResolver)
-        return CoolwalkRailMath.looksLikeHuContentBounds(
-            rect,
-            env.layoutWidthPx(),
-            env.layoutHeightPx(),
-            CoolwalkRailCoordinator.observedFullHuWidthPx(),
-        )
     }
 
     private fun zeroPillarWidthIfNeeded(env: CoolwalkHookEnv, param: de.robv.android.xposed.XC_MethodHook.MethodHookParam) {
@@ -292,6 +276,7 @@ object AaCoolwalkProjectionHook {
     private fun rewriteProjectionConfigParcelable(env: CoolwalkHookEnv, key: String?, value: Any?): Rect? {
         if (key.isNullOrEmpty() || key !in CoolwalkHookEnv.PROJECTION_CONFIG_KEYS) return null
         val rect = value as? Rect ?: return null
+        // The key proves this Rect *is* content_bounds / content_insets — no heuristic involved.
         return when (key) {
             "content_bounds", "contentBounds" -> applyExpandedContentBounds(env, rect)
             "content_insets", "contentInsets" -> applyZeroedContentInsets(env, rect)

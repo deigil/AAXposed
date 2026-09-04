@@ -13,8 +13,8 @@
 
 ## 版本
 
-- 当前模块版本：`0.24#17.2-e1`（versionCode `3012`）
-- 详见 [CHANGELOG.md](CHANGELOG.md) 与 [RELEASE_NOTES_v0.24.0.md](RELEASE_NOTES_v0.24.0.md)
+- 当前模块版本：`0.24#17.2-e2`（versionCode `3016`）
+- 详见 [CHANGELOG.md](CHANGELOG.md) 与 [RELEASE_NOTES_v0.24#17.2-e2.md](RELEASE_NOTES_v0.24%2317.2-e2.md)
 
 ## 运行要求
 
@@ -24,12 +24,12 @@
 
 ## 测试环境
 
-`0.24#17.2-e1` 在以下环境实测通过：
+`0.24#17.2-e2` 在以下环境实测通过：
 
 | 项目 | 版本 |
 |---|---|
 | 系统 | HyperOS `3.0.307.6` |
-| Android Auto | `17.2` |
+| Android Auto | `17.3.662854` |
 | Xposed 框架 | LSPosed |
 | 车机端 | DHU（Desktop Head Unit） |
 
@@ -38,6 +38,8 @@
 - 手机端小窗可拖动、可等比缩放，长按缩放把手恢复默认大小；
 - 多任务面板在 100% 与缩小状态下都完整落在车机画面区域内，网格列数随可用宽度
   在 3 / 2 之间自适应；点击应用图标能切换车机前台任务；
+- 「隐藏车机 UI 控件」开启时整段 DHU 会话不再闪退，投屏画布 `1200x720`、rail 回收为 0；
+- 投屏屏上的应用铺满整屏（`letterBoxed=false`），不再被 letterbox 压成居中窄条；
 - 投屏期间护眼模式抑制、Gboard 键盘落回手机主屏均按预期生效；
 - logcat 无 `InflateException` / `FATAL EXCEPTION` / `system_server` 异常。
 
@@ -70,6 +72,7 @@
    - 默认启动应用
    - 延迟销毁时间
    - 隐藏车机 UI 控件（`HideAaUiControls`，默认开）
+   - 投屏应用强制全屏（`ForceAppFullscreenOnProjection`，默认开）
    - 投屏时挂起护眼模式（`SuspendEyeCareOnProjection`，默认开）
    - 修正 Gboard 悬浮键盘（`FixGboardFloatingIme`，默认开）
 

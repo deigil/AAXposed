@@ -86,6 +86,8 @@
 
     <string name="pref_suspend_eye_care_title">投屏时暂停护眼模式</string>
     <string name="pref_suspend_eye_care_summary">MIUI/HyperOS 的护眼模式会让车机画面发黄；投屏期间临时关闭，断开后恢复（手机自身也会暂时失去护眼效果）</string>
+    <string name="pref_force_app_fullscreen_title">强制应用铺满车机屏</string>
+    <string name="pref_force_app_fullscreen_summary">竖屏应用在车机横屏上默认被压成居中窄条并留黑边；开启后忽略应用的固定朝向请求，按车机屏方向铺满</string>
     <string name="pref_fix_gboard_ime_title">修正 Gboard 悬浮键盘</string>
     <string name="pref_fix_gboard_ime_summary">投屏期间把 Gboard 读到的悬浮形态改回普通键盘，不写入 Gboard 设置。键盘显示位置设为「手机主屏」时通常无需开启</string>
 

@@ -96,6 +96,14 @@
             app:summary="@string/pref_suspend_eye_care_summary"
             app:iconSpaceReserved="false" />
 
+        <!-- 见 AndroidHook.AppFullscreenOnProjection -->
+        <rikka.material.preference.MaterialSwitchPreference
+            app:key="ForceAppFullscreenOnProjection"
+            app:defaultValue="true"
+            app:title="@string/pref_force_app_fullscreen_title"
+            app:summary="@string/pref_force_app_fullscreen_summary"
+            app:iconSpaceReserved="false" />
+
         <!-- 见 GboardImeHook -->
         <rikka.material.preference.MaterialSwitchPreference
             app:key="FixGboardFloatingIme"

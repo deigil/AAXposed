@@ -8,10 +8,10 @@ import android.os.SystemClock
 import com.github.kyuubiran.ezxhelper.init.InitFields
 import com.github.kyuubiran.ezxhelper.utils.hookAfter
 import com.github.kyuubiran.ezxhelper.utils.loadClass
-import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.nitsuya.aa.display.BuildConfig
 import io.github.nitsuya.aa.display.service.AaActivityService
 import io.github.nitsuya.aa.display.util.AABroadcastConst
+import io.github.nitsuya.aa.display.xposed.hook.HookTarget
 import io.github.nitsuya.aa.display.xposed.log
 import io.github.nitsuya.aa.display.xposed.logDebug
 import java.lang.reflect.InvocationTargetException
@@ -25,7 +25,7 @@ object AaCoolwalkAutoOpenHook {
     @Volatile
     private var lastFullBleedRelaunchScheduleUptimeMs = -1L
 
-    fun install(env: CoolwalkHookEnv, lpparam: XC_LoadPackage.LoadPackageParam) {
+    fun install(env: CoolwalkHookEnv, target: HookTarget) {
         logDebug(
             CoolwalkHookEnv.TAG,
             "AaUiHook: AutoOpen startMethod=${env.startMethod?.name} enabled=${env.autoOpenEnabled}",

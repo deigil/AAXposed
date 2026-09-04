@@ -1,5 +1,83 @@
 # Changelog
 
+## v0.24#17.2-e2 (2026-09-02)
+
+基线：`4a9746b`（tag `v0.24.0`，`0.24#17.2-e1` / `3012`）。详见 `RELEASE_NOTES_v0.24#17.2-e2.md`。
+
+### Added
+- 迁移到 libxposed 现代 Xposed API：新入口 `ModernInit`（`META-INF/xposed/java_init.list`），
+  配置改读框架守护进程里的远端配置，不再依赖 others 可读的 `aadisplay_config.xml`
+  （LSPosed 2.2.0 起废弃、2.3.0 计划移除）。`XposedInit` 保留为旧框架兜底，两条路径共存。
+  `module.prop` 的 `targetApiVersion` 停在 101，否则框架会屏蔽 EzXHelper 依赖的
+  `de.robv.android.xposed.*`。
+- `HookPreferences`：hook 侧唯一的配置入口，来源由入口类注入（现代=远端配置，
+  legacy=`XSharedPreferences`+`reload()`），解析结果缓存，取不到时回落默认值。
+- `RemoteConfigMirror`：把 UI 侧写入的本地 `SharedPreferences` 同步到远端配置
+  （绑定时全量补齐，之后逐 key 推送）。
+- `HookTarget`：与框架无关的「被 hook 目标」描述，替换各 hook 签名里的
+  `LoadPackageParam`（现代 API 的两个回调都不给进程名，legacy 的 param 又造不出来）。
+- `ModuleAssets`：补齐 EzXHelper 的 `modulePath` / `moduleRes`（现代 API 没有
+  `StartupParam`），懒解析 + `PathClassLoader` 兜底，失败只记日志不抛。
+- `CoolwalkComposeConstraintsGuard`：Compose 约束断言守卫，见 Fixed 第一条。
+- 新增配置项 `ForceAppFullscreenOnProjection`（默认 `true`）。
+
+### Changed
+- 版本号更新为：
+  - `versionName`: `0.24#17.2-e2`
+  - `versionCode`: `3016`
+- `packaging` 不再整块排除 `META-INF/**`，改为逐项排除依赖元数据，
+  保住 libxposed 要求的 `META-INF/xposed/**`。
+- `AndroidManifest.xml` 补上 `android:name=".Application"`：此前该类从未注册，
+  `onCreate` 不会执行，`makeReadableForHooks` / `DynamicColors` / 全局 `App` 实际都没生效过。
+- 模块自身不再作为作用域分发：`xposed_scope` 删掉 `io.github.nitsuya.aa.display`，
+  `XposedInit` 对应分支改为 `null`。
+- `CoreManagerService.config` 改为委托 `HookPreferences`；`AaVirtualDisplayAdapter` 的
+  config 形参类型放宽到 `SharedPreferences?`。
+- `AndroidAuoHook` 用 `target.appInfo?.sourceDir` 并对 null 跳过（原先会 NPE）。
+- 删除 `AaDisplayProcessHook` / `AaDisplayPresentationResize` 与
+  `CoolwalkDrawingSpecWiden` 的模块进程侧改写路径：模块自身进程无法被 hook，
+  投屏尺寸由 system_server 侧 `DisplayProfileSettle` 裁定。
+- 删除 content_bounds 的无键改写路径（进程级 `Rect(int,int,int,int)` / `Rect.set` hook）：
+  gearhead 自己分配的 `Rect(80, 0, 1280, 720)` 与 rail 内缩后的 content_bounds 形状完全一致，
+  无法靠收紧判定区分，撑到 1280 就与只有 1200 的协商画布矛盾。改写现在只走带键路径
+  （config Bundle / `Bundle.putParcelable` / `Intent.putExtra` / `ArrayMap.put`），
+  且 content_bounds 只平移到原点、不再撑大：`CoolwalkRailMath.expandedBoundsWithin`
+  以传入矩形的宽度为上限，画布本身仍由 `CoolwalkDrawingSpecWiden` 负责放大。
+
+### Fixed
+- 修复开启「隐藏车机 UI 控件」后 `gearhead:projection` 闪退（连 DHU / 连车即断）：
+  该开关把 GhFacetBar VD 饿到 1×720、Dashboard VD 饿到 1×1 并把残留窗口宽度写 0，
+  而 17.x 的车机 UI 是 Compose —— 分栏容器测量时拿「主轴可用量 − 第一组已用量」当第二组预算，
+  容器只剩 0/1 px 时差值为负，撞上 `Constraints(minW, maxW, minH, maxH)` 里
+  `max >= min && min >= 0` 的硬断言，在 `AndroidComposeView.dispatchDraw` 的延迟测量里抛
+  `IllegalArgumentException: maxWidth must be >= than minWidth` 打死进程。
+  现在 hook 那两个校验入口（17.3 有两个，一个直接比较后抛、一个先与出布尔再抛），
+  参数合法立即原样放行，只把本来必定抛异常的四元组夹回合法值：负的 max 收到 0，
+  min 再夹进 max 以内，等价于「这一轴没有可用空间」。不吞异常、不改任何有效约束的语义。
+- 修复竖屏应用在车机横屏上被 fixed-orientation letterbox 压成居中窄条：
+  hook `ActivityRecord.getOverrideOrientation()`（12/13 回退 `getOrientation(int)`），
+  把投屏屏上 activity 的固定朝向改成 `SCREEN_ORIENTATION_UNSPECIFIED`。
+  实测 `setIgnoreOrientationRequest` 与 `OVERRIDE_ANY_ORIENTATION` 对虚拟屏均无效。
+- 修复投屏时整机软重启（`je#system_server`）两处成因：`CommonContextWrapper` 构造时
+  `InitFields.modulePath` 未初始化抛 `UninitializedPropertyAccessException`；
+  `onCreateDisplay` 建悬浮窗的异常从 `GlobalScope` 逃到线程默认处理器。
+- `WazeHook` / `GboardImeHook` 不再各自持有 `XSharedPreferences`。
+
+### Verification
+- 构建通过：`:aa-display:assembleRelease`；装机确认 `versionCode=3016`。- 环境：HyperOS `3.0.307.6`（Android 16）+ Android Auto `17.3.662854` + LSPosed，车机端为 DHU。
+- APK 内 `META-INF/xposed/{java_init.list,module.prop,scope.list}` 与 `assets/xposed_init` 均在；
+  `system` 与 gearhead 两侧现代入口均加载，`ModuleAssets` 解析出 modulePath，
+  `RemoteConfigMirror` 绑定框架服务并同步 16 个 key。
+- 重启后连 DHU 跑完整段会话（`HideAaUiControls` 开）：logcat 无 `maxWidth must be`、
+  无 `FATAL EXCEPTION`，DHU 侧无 `Failed to read from transport`，
+  `:projection` 及另外四个 gearhead 进程全程同 pid 存活。
+  守卫只命中一次：`repair Constraints w[1..1]→[1..1] h[0..-5]→[0..0]`，
+  附带的调用栈落在分栏容器测量 → `Constraints.copy` → `dispatchDraw` 这条预期路径上。
+- 画布：`displayProfile locked: 1200*720,160 (reported=1200 rail=0 full=1200)`、
+  `content_bounds=Rect(0, 0 - 1200, 720)`、`pillar_width=0`、rail 宽度回收为 0。
+- 投屏屏上的应用（车机启动器 / 高德）`mBounds=Rect(0, 0 - 1200, 720)`、`letterBoxed=false`。
+- 连续两次重启无 `system_server` 软重启。
+
 ## 0.24 (2026-08-30)
 
 基线：`c770d65` (`0.23#17.2-r5` / `3011`)。详见 `RELEASE_NOTES_v0.24.0.md`。

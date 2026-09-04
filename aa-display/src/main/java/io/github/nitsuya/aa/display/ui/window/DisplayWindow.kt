@@ -179,6 +179,9 @@ class DisplayWindow(
                 }
             }
             AndroidHook.FuckAppUseApplicationContext.hook()
+            if (AADisplayConfig.ForceAppFullscreenOnProjection.get(CoreManagerService.config)) {
+                AndroidHook.AppFullscreenOnProjection.hook()
+            }
         }
         fun release(){
             if(mScreenOffReplaceLockScreen){
@@ -190,6 +193,7 @@ class DisplayWindow(
                 monitor.release()
             }
             AndroidHook.FuckAppUseApplicationContext.unHook()
+            AndroidHook.AppFullscreenOnProjection.unHook()
         }
     }
 

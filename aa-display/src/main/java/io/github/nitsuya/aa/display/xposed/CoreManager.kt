@@ -4,6 +4,7 @@ import android.os.IBinder.DeathRecipient
 import android.os.Parcel
 import android.os.RemoteException
 import android.os.ServiceManager
+import android.os.SystemClock
 import android.util.Log
 import android.view.MotionEvent
 import android.view.Surface
@@ -29,8 +30,15 @@ object CoreManager : ICoreManager, DeathRecipient {
     @Volatile
     private var service: ICoreManager? = null
 
+    /** 取 binder 失败后的退避窗口，单位 ms —— 只影响失败重试频率，不改变成功路径。 */
+    private const val SERVICE_MISS_BACKOFF_MS = 500L
+
+    @Volatile
+    private var serviceMissUptimeMs = 0L
+
     override fun binderDied() {
         service = null
+        serviceMissUptimeMs = 0L
         Log.e(TAG, "Binder died")
     }
 
@@ -229,6 +237,13 @@ object CoreManager : ICoreManager, DeathRecipient {
 
     private fun getService(): ICoreManager? {
         if (service != null) return service
+        // 取不到时的退避：AADisplay 自己的进程一次就成功并缓存，只有 gearhead 会一直失败
+        // （BridgeService 的 uid 闸门），而 Coolwalk 几何钩子每构造一次 bounds 就问两遍
+        // 协调器，等于每次都往 PMS 打一发 transact —— 连车时能刷出几十条
+        // `Someone else trying to get my binder?`，白烧 CPU 还拖慢 system_server。
+        val now = SystemClock.uptimeMillis()
+        val lastMiss = serviceMissUptimeMs
+        if (lastMiss != 0L && now - lastMiss in 0 until SERVICE_MISS_BACKOFF_MS) return null
         val pm = ServiceManager.getService("package")
         val data = Parcel.obtain()
         val reply = Parcel.obtain()
@@ -248,12 +263,15 @@ object CoreManager : ICoreManager, DeathRecipient {
         }
         if (remote != null) {
             Log.i(TAG, "Binder acquired")
+            serviceMissUptimeMs = 0L
             remote.asBinder().linkToDeath(this, 0)
             service = Proxy.newProxyInstance(
                 javaClass.classLoader,
                 arrayOf(ICoreManager::class.java),
                 ServiceProxy(remote)
             ) as ICoreManager
+        } else {
+            serviceMissUptimeMs = now
         }
         return service
     }

@@ -3,9 +3,9 @@ package io.github.nitsuya.aa.display.xposed.hook.aa
 import android.content.SharedPreferences
 import com.github.kyuubiran.ezxhelper.utils.findMethod
 import com.github.kyuubiran.ezxhelper.utils.hookAfter
-import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.nitsuya.aa.display.BuildConfig
 import io.github.nitsuya.aa.display.xposed.hook.AaHook
+import io.github.nitsuya.aa.display.xposed.hook.HookTarget
 import io.github.nitsuya.aa.display.xposed.log
 import org.luckypray.dexkit.DexKitBridge
 import org.luckypray.dexkit.query.FindMethod
@@ -23,7 +23,7 @@ object AaSignatureHook: AaHook() {
         return processCar == processName
     }
 
-    override fun loadDexClass(bridge: DexKitBridge, lpparam: XC_LoadPackage.LoadPackageParam) {
+    override fun loadDexClass(bridge: DexKitBridge, target: HookTarget) {
         val methodMatcher = MethodMatcher().apply{
             modifiers = Modifier.PUBLIC or Modifier.FINAL
             returnType = "boolean"
@@ -59,7 +59,7 @@ object AaSignatureHook: AaHook() {
             && parameterTypes[0] == String::class.java
         }
     }
-    override fun hook(config: SharedPreferences?, lpparam: XC_LoadPackage.LoadPackageParam) {
+    override fun hook(config: SharedPreferences?, target: HookTarget) {
         method.hookAfter { param ->
             if((param.args[0] as String) == BuildConfig.APPLICATION_ID){
                 param.result = true

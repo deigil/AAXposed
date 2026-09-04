@@ -188,41 +188,16 @@ object CoolwalkRailMath {
     fun layoutWidthPx(snapshot: RailSnapshot): Int =
         max(snapshot.layoutWidthPx, snapshot.fullHuWidthPx).takeIf { it > 0 } ?: 0
 
-    fun looksLikeHuContentBounds(
-        rect: Rect,
-        layoutWidthPx: Int,
-        layoutHeightPx: Int,
-        observedFullHuWidthPx: Int = 0,
-    ): Boolean {
-        if (rect.width() <= 0 || rect.height() <= 0 || rect.top > 0) return false
-        val fullH = layoutHeightPx.takeIf { it > 0 } ?: rect.bottom
-        val observedFull = max(observedFullHuWidthPx, layoutWidthPx).takeIf { it > 0 } ?: 0
-        val fullW = layoutWidthPx.takeIf { it > 0 } ?: observedFull.takeIf { it > 0 } ?: rect.right
-        if (fullH > 0 && fullW > 0) {
-            val heightOk = abs(rect.bottom - fullH) <= 2
-            val range = railPxRange(maxOf(fullW, rect.right, observedFull))
-            val contentSlotInset = rect.left <= 0 &&
-                observedFull > rect.right + 8 &&
-                isPlausibleRailGap(observedFull - rect.right, observedFull)
-            val widthOk = abs(rect.right - fullW) <= 2 ||
-                abs(rect.right + rect.left - fullW) <= 2 ||
-                (rect.left > 0 && abs(rect.right - (fullW + rect.left)) <= 2) ||
-                contentSlotInset
-            if (!heightOk || !widthOk) return false
-            val leftInset = rect.left in range
-            val rightInset = rect.left <= 0 && (fullW - rect.right) in range
-            return leftInset || rightInset || contentSlotInset
-        }
-        if (rect.right < 320 || rect.bottom < 180) return false
-        val approxFullW = max(rect.right, observedFull).takeIf { it > 0 } ?: rect.right
-        if (rect.left in railPxRange(approxFullW)) return true
-        if (rect.left <= 0 && observedFull > rect.right + 8) {
-            return isPlausibleRailGap(observedFull - rect.right, observedFull)
-        }
-        return false
-    }
+    // `looksLikeHuContentBounds` used to live here: a shape heuristic whose only caller was the
+    // unkeyed process-wide `Rect` ctor / `Rect.set` hook. Both are gone — DHU field evidence
+    // showed gearhead's own `nqm#T` allocates `Rect(80, 0, 1280, 720)` (a genuine 1200px content
+    // slot), which is shape-identical to real rail-inset content_bounds, so the heuristic could
+    // not discriminate and the in-place expand killed `:projection`. See the
+    // [AaCoolwalkProjectionHook] header. content_bounds is now only rewritten when a key proves
+    // what it is; do not reintroduce a shape-only test.
 
     data class ExpandedBounds(
+        /** Full head-unit size this content_bounds is expanded to, and the size written to the Rect. */
         val targetWidthPx: Int,
         val targetHeightPx: Int,
         val railWidthPx: Int,
@@ -291,7 +266,7 @@ object CoolwalkRailMath {
             )
             if (left <= 0 && abs(right - snappedTarget) <= 2) return null
             if (snappedTarget > contentW + 2) {
-                return ExpandedBounds(snappedTarget, fullH, left)
+                return expandedBoundsOrNull(snappedTarget, fullH, left, top, right, bottom, left)
             }
             return null
         }
@@ -301,16 +276,60 @@ object CoolwalkRailMath {
         if (left <= 0) {
             val knownFull = max(observedFull, layoutW)
             if (knownFull > right + 8 && isPlausibleRailGap(knownFull - right, knownFull, touchRailWidthPx)) {
-                return ExpandedBounds(knownFull, fullH, knownFull - right)
+                return expandedBoundsOrNull(knownFull, fullH, left, top, right, bottom, knownFull - right)
             }
             if (layoutW <= 0 && observedFull <= 0 && touchRailWidthPx > 1) {
                 val inferred = right + touchRailWidthPx
                 if (isPlausibleRailGap(touchRailWidthPx, inferred, touchRailWidthPx) && inferred > right) {
-                    return ExpandedBounds(inferred, fullH, touchRailWidthPx)
+                    return expandedBoundsOrNull(inferred, fullH, left, top, right, bottom, touchRailWidthPx)
                 }
             }
         }
         return null
+    }
+
+    /**
+     * Build the expanded rect, or null when it would change nothing.
+     *
+     * The written size **is** the full-HU target: the rail gutter is reclaimed *and* the canvas
+     * grows, because a content_bounds narrower than the head unit is exactly the right-edge black
+     * bar — the projected VirtualDisplay only ever paints `writtenWidth` px of a `targetWidth` px
+     * head unit, and everything downstream (`DrawingSpec`, the CarActivity presentation VD, the
+     * settled display profile) is sized from this rect.
+     *
+     * e2 / 3016 shipped a cap here (`written = min(target, incomingWidth)`), which turned
+     * `Rect(80, 0, 1280, 720)` into `Rect(0, 0, 1200, 720)` and pinned the whole session to a
+     * 1200px canvas on a 1280px HU — 高德 and every other projected app lost the right 80px to
+     * black, while gearhead's own Coolwalk launcher (drawn into the real 1280px window) and the
+     * phone-side preview (mirroring the 1200px VD) both looked correct. The cap was added believing
+     * a wider rect is what threw `IllegalArgumentException: maxWidth must be >= than minWidth` in
+     * `:projection`; `full-e4.log` disproves that — e4 carried the cap and still died three times
+     * with the identical `dls.a` ← … ← `czw.dispatchDraw` stack. What actually cures that crash is
+     * [CoolwalkComposeConstraintsGuard], which clamps the negative-span `Constraints` tuples at
+     * the two validator entry points. The uncapped e1 build reached `1280x720` with no black bar.
+     *
+     * Note the incoming right edge is already in full-HU coordinates (1280), so only the *size*
+     * changes here; [CoolwalkCompositorPolicy] still refuses to resize AADisplay's own
+     * presentation VD, where a Surface mismatch would black the screen.
+     */
+    private fun expandedBoundsOrNull(
+        targetWidthPx: Int,
+        targetHeightPx: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        railWidthPx: Int,
+    ): ExpandedBounds? {
+        if (targetWidthPx <= 0 || targetHeightPx <= 0) return null
+        if (right - left <= 0 || bottom - top <= 0) return null
+        // Already the rect we would write — no gutter left and no size change.
+        if (left == 0 && top == 0 && right == targetWidthPx && bottom == targetHeightPx) return null
+        return ExpandedBounds(
+            targetWidthPx = targetWidthPx,
+            targetHeightPx = targetHeightPx,
+            railWidthPx = railWidthPx,
+        )
     }
 
     /**
@@ -393,6 +412,11 @@ object CoolwalkRailMath {
             DisplayProfileSettle.isContentSlotVsFull(slotW, targetWidthPx)
     }
 
+    /**
+     * Move rail-inset content_bounds to the origin and grow it to the full head unit. Returns null
+     * when nothing changes. See [expandedBoundsOrNull] for why the size is not capped to the
+     * incoming rect.
+     */
     fun applyExpandedContentBounds(
         rect: Rect,
         layoutWidthPx: Int,

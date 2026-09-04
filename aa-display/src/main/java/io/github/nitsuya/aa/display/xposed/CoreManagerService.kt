@@ -6,7 +6,6 @@ import android.content.*
 import android.os.*
 import android.view.*
 import com.github.kyuubiran.ezxhelper.utils.*
-import de.robv.android.xposed.XSharedPreferences
 import io.github.nitsuya.aa.display.BuildConfig
 import io.github.nitsuya.aa.display.model.RecentTask
 import io.github.nitsuya.aa.display.ui.aa.AaVirtualDisplayAdapter
@@ -46,16 +45,11 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
                 systemContextHost = value.createContext(value.params ?: ContextParams.Builder().build())
             }
 
-        val config: XSharedPreferences? by lazy {
-            XSharedPreferences(BuildConfig.APPLICATION_ID, AADisplayConfig.ConfigName).let { config ->
-                if(!config.file.canRead()) {
-                    log(TAG, "config unreadable: ${config.file}; using defaults")
-                    null
-                } else {
-                    config
-                }
-            }
-        }
+        /**
+         * system_server 侧的模块配置。来源由入口类注入（现代 API 走远端配置，
+         * 旧框架走 XSharedPreferences），这里只负责取。
+         */
+        val config: SharedPreferences? get() = HookPreferences.get()
 
         private var mDisplayWindow: DisplayWindow? = null
         private var mAaVirtualDisplayAdapter: AaVirtualDisplayAdapter? = null
@@ -305,6 +299,11 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
             TipUtil.init(systemContext, "[AADisplay] ")
             Instances.init(systemContext)
 
+            // 提前把 EzXHelper 的 modulePath 解析好。悬浮窗（CommonContextWrapper）要用它，
+            // 而那条路径跑在 system_server 主 looper 上、只在插车时才走到 —— 放到这里做，
+            // 失败会在开机日志里直接暴露，而不是等到投屏那一刻。
+            log(TAG, "module assets ready: ${ModuleAssets.ensureModulePath()}")
+
             // 上一次开机挂起后未能还原（进程被杀 / 直接重启）时，screen_paper_mode_enabled 会带着
             // 我们置的值持久化下来使护眼一直失效，这里兜底回滚。
             EyeCareSuspender.recoverStaleSuspend(systemContext).also { r ->
@@ -408,8 +407,8 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
                 )
                 return@runMain
             }
+            val config = HookPreferences.latest()
             config?.apply {
-                reload()
                 log(TAG, "config: ${this.all.map { "${it.key}=${it.value}[${it.value?.javaClass?.name}]" }.joinToString() }")
             }
             mDisplayCreateInProgress = true
@@ -429,6 +428,12 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
                         profile.height,
                         profile.densityDpi
                     )
+                } catch (t: Throwable) {
+                    // 这里跑在 system_server 主 looper 上（runMain + Dispatchers.Main），
+                    // 且 GlobalScope 没有 CoroutineExceptionHandler：异常逃出去会走到线程的
+                    // 默认处理器，直接把 system_server 打死 → 整机软重启（je#system_server）。
+                    // 投屏画面本身由 VirtualDisplay 承载，悬浮窗建失败也不该拖垮系统。
+                    log(TAG, "onCreateDisplay failed after virtual display setup", t)
                 } finally {
                     mDisplayCreateInProgress = false
                 }

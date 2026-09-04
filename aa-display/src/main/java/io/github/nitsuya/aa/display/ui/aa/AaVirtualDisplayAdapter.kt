@@ -8,6 +8,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -20,13 +21,13 @@ import android.window.TaskSnapshot
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.drawable.toBitmap
 import com.github.kyuubiran.ezxhelper.utils.*
-import de.robv.android.xposed.XSharedPreferences
 import io.github.nitsuya.aa.display.BuildConfig
 import io.github.nitsuya.aa.display.model.RecentTask
 import io.github.nitsuya.aa.display.model.RecentTaskInfo
 import io.github.nitsuya.aa.display.service.ShellManagerService
 import io.github.nitsuya.aa.display.util.AADisplayConfig
 import io.github.nitsuya.aa.display.xposed.CoreManagerService
+import io.github.nitsuya.aa.display.xposed.HookPreferences
 import io.github.nitsuya.aa.display.xposed.IShellManager
 import io.github.nitsuya.aa.display.xposed.TipUtil
 import io.github.nitsuya.aa.display.xposed.log
@@ -36,7 +37,7 @@ import io.github.nitsuya.template.bases.runMain
 
 class AaVirtualDisplayAdapter(
       private val context: Context
-    , private val config: XSharedPreferences?
+    , private val config: SharedPreferences?
     , private val onReady: (suspend AaVirtualDisplayAdapter.(it:AaVirtualDisplayAdapter) -> Unit)
 ) {
     companion object {
@@ -451,8 +452,8 @@ class AaVirtualDisplayAdapter(
     }
 
     private fun refreshLauncherPackage(reason: String) {
-        config?.reload()
-        val configured = AADisplayConfig.LauncherPackage.get(config)
+        // 现代 API 的远端配置是实时的；旧框架下由 HookPreferences.latest() 负责 reload。
+        val configured = AADisplayConfig.LauncherPackage.get(HookPreferences.latest() ?: config)
         val resolved = resolveLauncherPackage(configured)
         if (mLauncherPackage != resolved) {
             log(TAG, "launcher[$reason]: configured=${configured.orEmpty()}, resolved=${resolved.orEmpty()}")

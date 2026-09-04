@@ -1,0 +1,11 @@
+# libxposed（现代 Xposed API）模块描述。框架按 META-INF/xposed/ 下的这几个
+# zip entry 判断模块是不是 modern 模块，所以 packaging 里不能整块排除 META-INF/**。
+#
+# targetApiVersion 停在 101（编译期也用 api:101.0.0）：
+# 框架的 VectorModuleClassLoader 只在 targetApiVersion >= 102 时才屏蔽
+# de.robv.android.xposed.*，而本模块的 hook 全部经由 EzXHelper（依赖
+# XposedBridge / XC_MethodHook）实现。声明 101 让现代入口与 legacy 桥共存。
+# 101 与 102 的 XposedModule 构造器、四个回调签名、IXposedService 的 DESCRIPTOR
+# 与事务码一致，因此按 101 编译的入口类在 102 框架上同样可加载。
+minApiVersion=101
+targetApiVersion=101

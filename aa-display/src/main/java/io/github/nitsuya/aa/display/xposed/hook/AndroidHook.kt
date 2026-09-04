@@ -5,11 +5,12 @@ import android.content.pm.ActivityInfo
 import android.content.pm.IPackageManager
 import android.content.res.Configuration
 import android.os.Build
+import android.view.Display
 import com.github.kyuubiran.ezxhelper.utils.*
 import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.nitsuya.aa.display.CoreApi
 import io.github.nitsuya.aa.display.IsSystemEnv
+import io.github.nitsuya.aa.display.util.AADisplayConfig
 import io.github.nitsuya.aa.display.xposed.BridgeService
 import io.github.nitsuya.aa.display.xposed.CoreManagerService
 import io.github.nitsuya.aa.display.xposed.log
@@ -17,8 +18,8 @@ import io.github.qauxv.util.Initiator
 
 object AndroidHook : BaseHook() {
     override val tagName: String = "AAD_AndroidHook"
-    override fun init(lpparam: XC_LoadPackage.LoadPackageParam) {
-        Initiator.init(lpparam.classLoader)
+    override fun init(target: HookTarget) {
+        Initiator.init(target.classLoader)
         log(tagName, "xposed init")
         var serviceManagerHook: XC_MethodHook.Unhook? = null
         serviceManagerHook = findMethod("android.os.ServiceManager") {
@@ -188,5 +189,95 @@ object AndroidHook : BaseHook() {
             applicationThread_bindApplication_hook = null
         }
 
+    }
+
+    /**
+     * 让投屏虚拟屏上的应用铺满整屏。
+     *
+     * 竖屏应用（微信 `SCREEN_ORIENTATION_PORTRAIT`、bilibili 同理）落到这块横屏
+     * VirtualDisplay 上时，WM 的 fixed-orientation letterbox 会把它压成 590x720
+     * 的居中窄条（`bounds=Rect(345, 0 - 935, 720)`、`letterBoxed=true`），两侧留黑边。
+     *
+     * 实测结论（1280x720/160 叠加屏 A/B）：
+     * - `IWindowManager.setIgnoreOrientationRequest(displayId, true/false)` 对虚拟屏
+     *   没有效果，两种取值下边界都是那条 590x720；虚拟屏默认已经是 true。
+     * - 把 activity 的 override orientation 去掉（compat `OVERRIDE_ANY_ORIENTATION_TO_USER`）
+     *   后边界立刻变成 `Rect(0, 0 - 1280, 720)`、`letterBoxed=false`。
+     *
+     * 所以这里直接在 [ActivityRecord.getOverrideOrientation] 出口把投屏屏上的固定朝向
+     * 改成 `SCREEN_ORIENTATION_UNSPECIFIED`，交给 display 自己的朝向决定布局。
+     * 不写任何 compat 覆盖、不碰应用自己的 `getRequestedOrientation()`，
+     * 断开投屏时 unhook 即恢复。
+     *
+     * 全程只按 [CoreManagerService.getDisplayId] 比对，与分辨率无关
+     * （1280x720/160 的 DHU 和 800x533/170 的车机行为一致）。
+     */
+    object AppFullscreenOnProjection {
+        private const val SCREEN_ORIENTATION_UNSPECIFIED = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+
+        // Android 14+：ActivityRecord.getOverrideOrientation()，WM 解析朝向的唯一入口。
+        private val activityRecord_getOverrideOrientation by lazy {
+            if (!IsSystemEnv) return@lazy null
+            try {
+                findMethod("com.android.server.wm.ActivityRecord") {
+                    name == "getOverrideOrientation" && parameterCount == 0
+                }
+            } catch (e: Throwable) {
+                log(tagName, "AppFullscreen ActivityRecord.getOverrideOrientation method", e)
+                null
+            }
+        }
+
+        // Android 12/13 回退：没有 getOverrideOrientation，朝向由 getOrientation(candidate) 汇总。
+        private val activityRecord_getOrientation by lazy {
+            if (!IsSystemEnv) return@lazy null
+            try {
+                findMethod("com.android.server.wm.ActivityRecord") {
+                    name == "getOrientation"
+                            && parameterCount == 1
+                            && parameterTypes[0] == Int::class.javaPrimitiveType
+                }
+            } catch (e: Throwable) {
+                log(tagName, "AppFullscreen ActivityRecord.getOrientation method", e)
+                null
+            }
+        }
+
+        private var hookOrientation: XC_MethodHook.Unhook? = null
+
+        private fun isOnProjectionDisplay(activityRecord: Any?): Boolean {
+            activityRecord ?: return false
+            val projectionDisplayId = CoreManagerService.getDisplayId()
+            if (projectionDisplayId == Display.INVALID_DISPLAY) return false
+            return try {
+                activityRecord.invokeMethod("getDisplayId") as? Int == projectionDisplayId
+            } catch (e: Throwable) {
+                false
+            }
+        }
+
+        fun hook() {
+            unHook()
+            val target = activityRecord_getOverrideOrientation ?: activityRecord_getOrientation
+            if (target == null) {
+                log(tagName, "AppFullscreen: no orientation method found, skip")
+                return
+            }
+            hookOrientation = target.hookAfter { param ->
+                try {
+                    if ((param.result as? Int) == SCREEN_ORIENTATION_UNSPECIFIED) return@hookAfter
+                    if (!isOnProjectionDisplay(param.thisObject)) return@hookAfter
+                    param.result = SCREEN_ORIENTATION_UNSPECIFIED
+                } catch (e: Throwable) {
+                    log(tagName, "AppFullscreen orientation Hook Exception", e)
+                }
+            }
+            log(tagName, "AppFullscreen hooked: ${target.declaringClass.simpleName}.${target.name}")
+        }
+
+        fun unHook() {
+            hookOrientation?.apply { unhook() }
+            hookOrientation = null
+        }
     }
 }

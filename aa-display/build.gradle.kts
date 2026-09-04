@@ -13,15 +13,38 @@ android {
         applicationId = "io.github.nitsuya.aa.display"
         minSdk = 31
         targetSdk = 36
-        versionCode = 3012
-        versionName = "0.24#17.2-e1"
+        versionCode = 3016
+        versionName = "0.24#17.2-e2"
         buildConfigField("long", "BUILD_TIME", buildTime.toString())
     }
 
     packaging {
+        // 不能整块排除 META-INF/**：libxposed 的模块描述文件（module.prop /
+        // java_init.list / scope.list）必须以 META-INF/xposed/ 的形式留在 APK 里，
+        // 框架就是按这些 zip entry 判断模块是不是 modern 模块的。
+        // 这里逐项列出原先想丢掉的依赖元数据，保持 META-INF/xposed/** 不被波及。
         resources.excludes.addAll(
             arrayOf(
-                "META-INF/**",
+                "META-INF/MANIFEST.MF",
+                "META-INF/*.SF",
+                "META-INF/*.DSA",
+                "META-INF/*.RSA",
+                "META-INF/*.version",
+                "META-INF/*.kotlin_module",
+                "META-INF/**/*.kotlin_module",
+                "META-INF/*.properties",
+                "META-INF/*.txt",
+                "META-INF/*.md",
+                "META-INF/LICENSE*",
+                "META-INF/NOTICE*",
+                "META-INF/DEPENDENCIES",
+                "META-INF/AL2.0",
+                "META-INF/LGPL2.1",
+                "META-INF/androidx/**",
+                "META-INF/com/**",
+                "META-INF/proguard/**",
+                "META-INF/services/**",
+                "META-INF/versions/**",
                 "kotlin/**"
             )
         )
@@ -125,6 +148,23 @@ dependencies {
     implementation("dev.rikka.hidden:compat:4.4.0")
     compileOnly("dev.rikka.hidden:stub:4.4.0")
     compileOnly(files("./libs/de.robv.android.xposed_api_82.jar"))
+    // libxposed（现代 Xposed API）。api 必须是 compileOnly：框架会检查入口类的
+    // XposedModule 是否由框架自己的 ClassLoader 加载，编进 APK 会直接被拒绝加载。
+    // 固定在 101：102 的 AAR 要求 compileSdk=37（AGP 8.11.2 只支持到 36）。
+    // 101 与 102 的 XposedModule 构造器、四个回调签名、IXposedService 的
+    // DESCRIPTOR 与事务码完全一致，attachFramework 由框架在自己加载的 api 类上调用，
+    // 所以按 101 编译在 102 框架上同样可用。module.prop 里 targetApiVersion 也声明 101，
+    // 这样 de.robv.android.xposed.* 不会被 blockLegacyApi 挡掉（EzXHelper 依赖它）。
+    compileOnly("io.github.libxposed:api:101.0.0") {
+        // libxposed 的 pom 声明了 kotlin-stdlib 2.2.10，会把项目的 stdlib 顶到
+        // 编译器（Kotlin 2.0.0，最多读 2.1.0 元数据）读不了的版本。它的 class
+        // 文件里没有任何 kotlin/ 引用，纯 Java，排掉即可。
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
+    }
+    // 模块 App 侧：通过 XposedService 写远端配置，取代世界可读的 XSharedPreferences。
+    implementation("io.github.libxposed:service:101.0.0") {
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
+    }
     implementation("com.github.kyuubiran:EzXHelper:1.0.3")
     implementation("com.github.topjohnwu.libsu:core:5.2.0")
     implementation("org.luckypray:dexkit:2.0.0-rc3")

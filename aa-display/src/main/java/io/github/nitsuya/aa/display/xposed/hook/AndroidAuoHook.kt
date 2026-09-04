@@ -7,10 +7,7 @@ import com.github.kyuubiran.ezxhelper.init.EzXHelperInit
 import com.github.kyuubiran.ezxhelper.utils.findMethod
 import com.github.kyuubiran.ezxhelper.utils.hookBefore
 import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XSharedPreferences
-import de.robv.android.xposed.callbacks.XC_LoadPackage
-import io.github.nitsuya.aa.display.BuildConfig
-import io.github.nitsuya.aa.display.util.AADisplayConfig
+import io.github.nitsuya.aa.display.xposed.HookPreferences
 import io.github.nitsuya.aa.display.xposed.hook.aa.AaBasicsHook
 import io.github.nitsuya.aa.display.xposed.hook.aa.AaBtnEventHook
 import io.github.nitsuya.aa.display.xposed.hook.aa.AaDpiHook
@@ -37,30 +34,19 @@ abstract class AaHook {
      * 在 [loadDexClass] / [hook] 之前调用一次，供 hook 缓存自己的开关状态。
      */
     open fun isEnabled(config: SharedPreferences?, processName: String): Boolean = true
-    open fun loadDexClass(bridge: DexKitBridge, lpparam: XC_LoadPackage.LoadPackageParam) {}
-    abstract fun hook(config: SharedPreferences?, lpparam: XC_LoadPackage.LoadPackageParam)
+    open fun loadDexClass(bridge: DexKitBridge, target: HookTarget) {}
+    abstract fun hook(config: SharedPreferences?, target: HookTarget)
 }
 
 object AndroidAuoHook : BaseHook() {
     override val tagName: String = "AAD_AndroidAuoHook"
-    override fun init(lpparam: XC_LoadPackage.LoadPackageParam) {
-        val processName = lpparam.processName
+    override fun init(target: HookTarget) {
+        val processName = target.processName
         val supported = listOf(AaBasicsHook, AaSignatureHook, AaDpiHook, AaBtnEventHook, AaUiHook, AaMediaPlaceholderHook, AaPropsHook)
             .filter { i -> i.isSupportProcess(processName) }
         if(supported.isEmpty()) return
 
-        val configPreferences = XSharedPreferences(BuildConfig.APPLICATION_ID, AADisplayConfig.ConfigName)
-        val config = if (configPreferences.file.canRead()) {
-            runCatching {
-                configPreferences.reload()
-            }.onFailure { e ->
-                log(tagName, "configPreferences reload failed; continuing with cached/default values", e)
-            }
-            configPreferences
-        } else {
-            log(tagName, "configPreferences unreadable: ${configPreferences.file}; continuing with defaults")
-            null
-        }
+        val config = HookPreferences.get()
 
         val hooks = supported.filter { h ->
             runCatching { h.isEnabled(config, processName) }.onFailure { e ->
@@ -68,6 +54,12 @@ object AndroidAuoHook : BaseHook() {
             }.getOrDefault(true)
         }
         if(hooks.isEmpty()) return
+
+        val sourceDir = target.appInfo?.sourceDir
+        if (sourceDir == null) {
+            log(tagName, "no sourceDir for ${target.packageName}; skip")
+            return
+        }
 
         var onCreateApplication: XC_MethodHook.Unhook? = null
         onCreateApplication = findMethod(Instrumentation::class.java) {
@@ -78,20 +70,20 @@ object AndroidAuoHook : BaseHook() {
             onCreateApplication?.unhook()
             EzXHelperInit.initAppContext()
             System.loadLibrary("dexkit")
-            DexKitBridge.create(lpparam.appInfo.sourceDir).use { bridge ->
+            DexKitBridge.create(sourceDir).use { bridge ->
                 if(bridge == null){
                     log(tagName,"DexKitBridge.create() failed")
                     return@hookBefore
                 }
                 val measureTimeMillis = measureTimeMillis {
                     hooks.forEach { h ->
-                        h.loadDexClass(bridge, lpparam)
+                        h.loadDexClass(bridge, target)
                     }
                 }
-                log(tagName,"${lpparam.processName} load class measure ${measureTimeMillis}ms")
+                log(tagName,"${target.processName} load class measure ${measureTimeMillis}ms")
             }
             hooks.forEach { h ->
-                h.hook(config, lpparam)
+                h.hook(config, target)
             }
         }
     }

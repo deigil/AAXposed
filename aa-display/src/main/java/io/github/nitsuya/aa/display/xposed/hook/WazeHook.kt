@@ -9,11 +9,9 @@ import android.os.Bundle
 import android.provider.Settings
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XSharedPreferences
-import de.robv.android.xposed.callbacks.XC_LoadPackage
-import io.github.nitsuya.aa.display.BuildConfig
 import io.github.nitsuya.aa.display.util.AADisplayConfig
 import io.github.nitsuya.aa.display.util.WazeOnAaManager
+import io.github.nitsuya.aa.display.xposed.HookPreferences
 
 object WazeHook : BaseHook() {
     override val tagName: String = "AAD_WazeHook"
@@ -21,46 +19,45 @@ object WazeHook : BaseHook() {
     private const val CAR_CONNECTION_AUTHORITY = "androidx.car.app.connection"
     private const val CAR_CONNECTION_STATE = "CarConnectionState"
 
-    override fun init(lpparam: XC_LoadPackage.LoadPackageParam) {
-        val configPreferences = XSharedPreferences(BuildConfig.APPLICATION_ID, AADisplayConfig.ConfigName)
-        hookContentResolverQueries(configPreferences)
-        hookContentResolverCalls(configPreferences)
-        hookContentProviderClientQueries(configPreferences)
-        hookContentProviderClientCalls(configPreferences)
+    override fun init(target: HookTarget) {
+        hookContentResolverQueries()
+        hookContentResolverCalls()
+        hookContentProviderClientQueries()
+        hookContentProviderClientCalls()
     }
 
-    private fun hookContentResolverQueries(configPreferences: XSharedPreferences) {
+    private fun hookContentResolverQueries() {
         hookMethodsByName(ContentResolver::class.java, "query") { param ->
             val uri = extractUri(param.args) ?: return@hookMethodsByName
-            if (!shouldIntercept(uri, configPreferences, param.thisObject as? ContentResolver)) return@hookMethodsByName
+            if (!shouldIntercept(uri, param.thisObject as? ContentResolver)) return@hookMethodsByName
             param.result = buildNotConnectedCursor(extractProjection(param.args))
         }
     }
 
-    private fun hookContentResolverCalls(configPreferences: XSharedPreferences) {
+    private fun hookContentResolverCalls() {
         hookMethodsByName(ContentResolver::class.java, "call") { param ->
             val authority = extractCallAuthority(param.args) ?: return@hookMethodsByName
             if (authority != CAR_CONNECTION_AUTHORITY) return@hookMethodsByName
-            if (!isDisableEnabled(configPreferences, param.thisObject as? ContentResolver)) return@hookMethodsByName
+            if (!isDisableEnabled(param.thisObject as? ContentResolver)) return@hookMethodsByName
             param.result = Bundle().apply {
                 putInt(CAR_CONNECTION_STATE, 0)
             }
         }
     }
 
-    private fun hookContentProviderClientQueries(configPreferences: XSharedPreferences) {
+    private fun hookContentProviderClientQueries() {
         hookMethodsByName(ContentProviderClient::class.java, "query") { param ->
             val uri = extractUri(param.args) ?: return@hookMethodsByName
-            if (!shouldIntercept(uri, configPreferences, null)) return@hookMethodsByName
+            if (!shouldIntercept(uri, null)) return@hookMethodsByName
             param.result = buildNotConnectedCursor(extractProjection(param.args))
         }
     }
 
-    private fun hookContentProviderClientCalls(configPreferences: XSharedPreferences) {
+    private fun hookContentProviderClientCalls() {
         hookMethodsByName(ContentProviderClient::class.java, "call") { param ->
             val authority = extractCallAuthority(param.args) ?: return@hookMethodsByName
             if (authority != CAR_CONNECTION_AUTHORITY) return@hookMethodsByName
-            if (!isDisableEnabled(configPreferences, null)) return@hookMethodsByName
+            if (!isDisableEnabled(null)) return@hookMethodsByName
             param.result = Bundle().apply {
                 putInt(CAR_CONNECTION_STATE, 0)
             }
@@ -85,15 +82,13 @@ object WazeHook : BaseHook() {
 
     private fun shouldIntercept(
         uri: Uri,
-        configPreferences: XSharedPreferences,
         contentResolver: ContentResolver?
     ): Boolean {
         if (uri.authority != CAR_CONNECTION_AUTHORITY) return false
-        return isDisableEnabled(configPreferences, contentResolver)
+        return isDisableEnabled(contentResolver)
     }
 
     private fun isDisableEnabled(
-        configPreferences: XSharedPreferences,
         contentResolver: ContentResolver?
     ): Boolean {
         if (contentResolver != null) {
@@ -110,8 +105,8 @@ object WazeHook : BaseHook() {
             }
         }
 
-        configPreferences.reload()
-        return AADisplayConfig.DisableWazeOnAa.get(configPreferences)
+        // 现代 API 的远端配置是实时的，不需要（也没有）reload。
+        return AADisplayConfig.DisableWazeOnAa.get(HookPreferences.latest())
     }
 
     private fun extractUri(args: Array<Any?>): Uri? {

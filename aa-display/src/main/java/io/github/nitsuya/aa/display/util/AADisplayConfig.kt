@@ -38,6 +38,14 @@ sealed class AADisplayConfig<T>(val key: String) {
     //       代价是抑制为全局的 —— 投屏期间手机自己的屏幕也暂时没有护眼效果。
     // 见 [io.github.nitsuya.aa.display.util.EyeCareSuspender]
     object SuspendEyeCareOnProjection: BooleanConfig("SuspendEyeCareOnProjection", true)
+    // 竖屏应用（微信、bilibili 等）在投屏这块横屏 VirtualDisplay 上会被 WM 的
+    // fixed-orientation letterbox 压成居中窄条，两侧留黑边；display 的
+    // ignoreOrientationRequest 对虚拟屏无效（实测切换 true/false 边界不变），
+    // 唯一生效的是把 activity 的 override orientation 去掉。
+    // true：投屏屏上的 activity 一律按 SCREEN_ORIENTATION_UNSPECIFIED 解析，铺满整屏；
+    //       代价是强制竖屏应用要以横屏布局运行，个别写死竖屏的应用可能显示异常。
+    // 见 [io.github.nitsuya.aa.display.xposed.hook.AndroidHook.AppFullscreenOnProjection]
+    object ForceAppFullscreenOnProjection: BooleanConfig("ForceAppFullscreenOnProjection", true)
     // Gboard 的键盘形态由持久化的 keyboard_mode_landscape 和 float_keyboard_in_* 决定，
     // 而设备形态取自机身（投屏时仍是 DEVICE_PHONE），投屏那块横屏 VirtualDisplay 因此
     // 直接命中“手机 + 横屏”这套键，键盘会以悬浮模式打开。

@@ -13,10 +13,10 @@ import com.github.kyuubiran.ezxhelper.utils.findMethod
 import com.github.kyuubiran.ezxhelper.utils.hookBefore
 import de.robv.android.xposed.XC_MethodReplacement
 import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.nitsuya.aa.display.BuildConfig
 import io.github.nitsuya.aa.display.util.AADisplayConfig
 import io.github.nitsuya.aa.display.xposed.hook.AaHook
+import io.github.nitsuya.aa.display.xposed.hook.HookTarget
 import io.github.nitsuya.aa.display.xposed.log
 import io.github.nitsuya.aa.display.xposed.logDebug
 import org.luckypray.dexkit.DexKitBridge
@@ -62,7 +62,7 @@ object AaMediaPlaceholderHook : AaHook() {
         return hideAaUiControls
     }
 
-    override fun loadDexClass(bridge: DexKitBridge, lpparam: XC_LoadPackage.LoadPackageParam) {
+    override fun loadDexClass(bridge: DexKitBridge, target: HookTarget) {
         insetAssertMethods = listOf(
             "does not mostly cover or provide a hint for one side of",
             "does not fully cover",
@@ -72,7 +72,7 @@ object AaMediaPlaceholderHook : AaHook() {
                     searchPackages = listOf("")
                     matcher { usingStrings(needle) }
                 }.mapNotNull { md ->
-                    runCatching { md.getMethodInstance(lpparam.classLoader) }.getOrNull()
+                    runCatching { md.getMethodInstance(target.classLoader) }.getOrNull()
                 }
             }.onFailure { e ->
                 log(tagName, "DexKit inset assert query failed: $needle", e)
@@ -87,7 +87,7 @@ object AaMediaPlaceholderHook : AaHook() {
         )
     }
 
-    override fun hook(config: SharedPreferences?, lpparam: XC_LoadPackage.LoadPackageParam) {
+    override fun hook(config: SharedPreferences?, target: HookTarget) {
         ensureMediaCarAppEnabled()
         hideDashboardOnAddView()
         suppressDashboardCoverAssert()

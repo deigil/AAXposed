@@ -9,14 +9,13 @@ import com.github.kyuubiran.ezxhelper.utils.findAllMethods
 import com.github.kyuubiran.ezxhelper.utils.findMethod
 import com.github.kyuubiran.ezxhelper.utils.hookBefore
 import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.nitsuya.aa.display.xposed.log
 
 object OtherHook : BaseHook() {
     override val tagName: String = "AAD_OtherHook"
-    override fun init(lpparam: XC_LoadPackage.LoadPackageParam) {
+    override fun init(target: HookTarget) {
         try {
-            log(tagName, "${lpparam.packageName}, ${lpparam.appInfo?.uid}, ${lpparam.isFirstApplication}, ${lpparam.processName}")
+            log(tagName, "${target.packageName}, ${target.appInfo?.uid}, ${target.isFirstApplication}, ${target.processName}")
             var onCreateApplication: XC_MethodHook.Unhook? = null
             onCreateApplication = findMethod(Instrumentation::class.java) {
                 name == "callApplicationOnCreate"

@@ -56,29 +56,35 @@ object CoolwalkProjectionBoundsHook {
                 val blY = param.args[1] as? Int ?: return@hookBefore
                 val trX = param.args[2] as? Int ?: return@hookBefore
                 val trY = param.args[3] as? Int ?: return@hookBefore
-                if (!shouldExpandLeftInset(blX, blY, trX, trY)) return@hookBefore
+                if (trX <= blX + 2 || trY <= blY + 2) return@hookBefore
+                if (isHuTruthPending()) return@hookBefore
                 val fullHint = CoolwalkRailCoordinator.bestObservedFullHuWidthPx().coerceAtLeast(trX)
-                val rightGap = (fullHint - trX).coerceAtLeast(0)
-                param.args[0] = 0
+                val expandLeft = shouldExpandLeftInset(blX, blY, trX, trY)
                 // Zeroing blX alone leaves trX at content-slot right (e.g. 1173 on 1280 HU)
                 // → right black bar. Expand trX when the residual gap looks like one rail.
-                val expandTrX = rightGap > 1 &&
-                    DisplayProfileSettle.isContentSlotVsFull(trX, fullHint)
-                if (expandTrX) {
-                    param.args[2] = fullHint
-                }
-                // systemInsets Rect (if present) often mirrors the left rail.
-                (param.args.getOrNull(5) as? Rect)?.let { insets ->
-                    if (insets.left in 8..240) {
-                        insets.left = 0
+                // The same residual also appears with blX already 0 (`blX=0, trX=1200` on a
+                // 1280 HU): the left rail was reclaimed upstream by content_bounds, but the
+                // window is still one rail narrow — that is 高德's right-edge black bar.
+                val expandRight = shouldExpandRightEdge(blX, trX, fullHint)
+                if (!expandLeft && !expandRight) return@hookBefore
+                if (expandLeft) {
+                    param.args[0] = 0
+                    // systemInsets Rect (if present) often mirrors the left rail.
+                    (param.args.getOrNull(5) as? Rect)?.let { insets ->
+                        if (insets.left in 8..240) {
+                            insets.left = 0
+                        }
                     }
                 }
-                val slotAfter = (param.args[2] as Int) - 0
+                if (expandRight) {
+                    param.args[2] = fullHint
+                }
                 logDebug(
                     CoolwalkHookEnv.TAG,
-                    "AaUiHook: expand projection bounds blX $blX→0 " +
-                        "slot=${trX - blX}→$slotAfter fullHint=$fullHint rightGap=$rightGap" +
-                        if (expandTrX) " trX→$fullHint" else "",
+                    "AaUiHook: expand projection bounds blX $blX→${param.args[0]} " +
+                        "slot=${trX - blX}→${(param.args[2] as Int) - (param.args[0] as Int)} " +
+                        "fullHint=$fullHint left=$expandLeft" +
+                        if (expandRight) " trX→$fullHint" else "",
                 )
             }
             hooked++
@@ -117,5 +123,37 @@ object CoolwalkProjectionBoundsHook {
             return true
         }
         return false
+    }
+
+    /**
+     * True when a content window ends one Coolwalk rail short of the head unit — that residual
+     * *is* the right-edge black bar. Covers the case [shouldExpandLeftInset] cannot see:
+     * `blX=0, trX=1200` on a 1280 HU, i.e. the left rail was already reclaimed by the
+     * content_bounds path but the window is still a content slot wide, so every projected app
+     * (高德 etc.) loses the right rail's worth of pixels while gearhead's own Coolwalk launcher —
+     * drawn into the real full-width window — looks correct.
+     *
+     * Needs a real head-unit width from
+     * [CoolwalkHuScreenParamsHook] / [CoolwalkRailCoordinator]: without one, `fullHint` collapses
+     * to [trX] and this is a no-op. Narrow chrome (facet bar, dashboard) is excluded by requiring
+     * the window to cover at least half the head unit, and the residual must still pass the
+     * single-rail gap test, so a 80px-wide rail window can never be "expanded" to full width.
+     */
+    internal fun shouldExpandRightEdge(blX: Int, trX: Int, fullHint: Int): Boolean {
+        if (fullHint <= trX + 1) return false
+        val slotW = trX - blX.coerceAtLeast(0)
+        if (slotW <= 0 || slotW * 2 < fullHint) return false
+        return DisplayProfileSettle.isContentSlotVsFull(trX, fullHint)
+    }
+
+    /**
+     * True while the head-unit width is still unknown mid-reconnect. Acting then widens
+     * LayoutInfo before content_bounds, which crashed `:projection` and left a black bar.
+     */
+    private fun isHuTruthPending(): Boolean {
+        val snap = CoolwalkRailCoordinator.current()
+        return snap.phase == RailPhase.ReconnectSettling &&
+            snap.fullHuWidthPx <= 0 &&
+            snap.fullBleedStableCount == 0
     }
 }

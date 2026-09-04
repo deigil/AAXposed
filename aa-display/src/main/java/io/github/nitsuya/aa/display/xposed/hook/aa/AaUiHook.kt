@@ -19,7 +19,6 @@ import com.github.kyuubiran.ezxhelper.utils.hookAfter
 import com.github.kyuubiran.ezxhelper.utils.hookBefore
 import com.github.kyuubiran.ezxhelper.utils.loadClass
 import com.github.kyuubiran.ezxhelper.utils.staticMethod
-import de.robv.android.xposed.callbacks.XC_LoadPackage
 import de.robv.android.xposed.callbacks.XCallback
 import io.github.nitsuya.aa.display.BuildConfig
 import io.github.nitsuya.aa.display.R
@@ -27,14 +26,17 @@ import io.github.nitsuya.aa.display.service.AaActivityService
 import io.github.nitsuya.aa.display.util.AABroadcastConst
 import io.github.nitsuya.aa.display.util.AADisplayConfig
 import io.github.nitsuya.aa.display.xposed.hook.AaHook
+import io.github.nitsuya.aa.display.xposed.hook.HookTarget
 import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.AaCoolwalkAutoOpenHook
 import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.AaCoolwalkCompositorHook
 import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.AaCoolwalkLayoutHook
 import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.AaCoolwalkProjectionHook
+import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.CoolwalkComposeConstraintsGuard
 import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.CoolwalkDrawingSpecWiden
 import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.CoolwalkFacetBarSurfaceHook
 import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.CoolwalkFacetChrome
 import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.CoolwalkHookEnv
+import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.CoolwalkHuScreenParamsHook
 import io.github.nitsuya.aa.display.xposed.hook.aa.coolwalk.CoolwalkProjectionBoundsHook
 import io.github.nitsuya.aa.display.xposed.hook.abortMethod
 import io.github.nitsuya.aa.display.xposed.log
@@ -91,9 +93,9 @@ object AaUiHook: AaHook() {
         return processProjection == processName
     }
 
-    override fun loadDexClass(bridge: DexKitBridge, lpparam: XC_LoadPackage.LoadPackageParam) {
+    override fun loadDexClass(bridge: DexKitBridge, target: HookTarget) {
         if (hideAaUiControls) {
-            loadDexClassCoolwalk(bridge, lpparam)
+            loadDexClassCoolwalk(bridge, target)
         } else {
             loadDexClassLegacy(bridge)
         }
@@ -103,7 +105,13 @@ object AaUiHook: AaHook() {
     // Coolwalk 隐藏 UI 控件（来自 Split-Lite 分支）
     // ------------------------------------------------------------------
 
-    private fun loadDexClassCoolwalk(bridge: DexKitBridge, lpparam: XC_LoadPackage.LoadPackageParam) {
+    private fun loadDexClassCoolwalk(bridge: DexKitBridge, target: HookTarget) {
+        // Compose 约束断言守卫：两个进程都要装，:car 会在下面提前 return。
+        CoolwalkComposeConstraintsGuard.resolve(bridge, target)
+        // 车机画布真值来源：:car 里没有 HU 尺寸的 VD，也收不到 :projection 的上报，
+        // 只能读 gearhead 自己的 DisplayParams。同样必须在 :car 的提前 return 之前。
+        CoolwalkHuScreenParamsHook.resolve(bridge, target)
+
         env.contentBoundsMethods = try {
             val byKey = bridge.findMethod {
                 searchPackages = listOf("")
@@ -118,7 +126,7 @@ object AaUiHook: AaHook() {
                 }
             }
             (byKey + byLog).mapNotNull { md ->
-                runCatching { md.getMethodInstance(lpparam.classLoader) }.getOrNull()
+                runCatching { md.getMethodInstance(target.classLoader) }.getOrNull()
             }.distinctBy { "${it.declaringClass.name}#${it.name}#${it.parameterTypes.joinToString { p -> p.name }}" }
                 .also { list ->
                     log(
@@ -142,7 +150,7 @@ object AaUiHook: AaHook() {
                 matcher { usingStrings("onWindowSurfaceAvailable dimensions:") }
             }
             (byWidth + byDims).mapNotNull { md ->
-                runCatching { md.getMethodInstance(lpparam.classLoader) }.getOrNull()
+                runCatching { md.getMethodInstance(target.classLoader) }.getOrNull()
             }.distinctBy { "${it.declaringClass.name}#${it.name}#${it.parameterTypes.joinToString { p -> p.name }}" }
                 .also { list ->
                     log(
@@ -173,7 +181,7 @@ object AaUiHook: AaHook() {
 
         env.startMethod = env.resolveCarStartActivityMethod()
 
-        if (lpparam.processName == processCar) {
+        if (target.processName == processCar) {
             env.loadProjectionResources()
             return
         }
@@ -198,16 +206,21 @@ object AaUiHook: AaHook() {
         env.loadProjectionResources()
     }
 
-    private fun hookCoolwalk(lpparam: XC_LoadPackage.LoadPackageParam) {
+    private fun hookCoolwalk(target: HookTarget) {
         env.loadProjectionResources()
-        CoolwalkDrawingSpecWiden.installGearhead(lpparam.classLoader)
+        // 必须在其它几何改写之前：0/1 px 容器会让 Compose 的 Constraints 断言炸掉进程。
+        CoolwalkComposeConstraintsGuard.install()
+        // 必须在下面所有按宽度决策的钩子之前装：它负责把真正的车机宽度喂给协调器，
+        // 否则 :car 只知道内容槽宽度（HU − 侧边栏），右侧就会留一条黑边。
+        CoolwalkHuScreenParamsHook.install(target.classLoader)
+        CoolwalkDrawingSpecWiden.installGearhead(target.classLoader)
         CoolwalkProjectionBoundsHook.install(
-            lpparam.classLoader,
+            target.classLoader,
             env.projectionBoundsClassName ?: CoolwalkProjectionBoundsHook.cachedClassName(),
         )
         CoolwalkFacetBarSurfaceHook.install(env)
         AaCoolwalkProjectionHook.install(env)
-        if (lpparam.processName == processCar) {
+        if (target.processName == processCar) {
             AaCoolwalkLayoutHook.installRailWidthDimens(env)
             AaCoolwalkCompositorHook.install(env)
             if (env.canHookFacetBar) {
@@ -222,7 +235,7 @@ object AaUiHook: AaHook() {
         if (env.canHookFacetBar) {
             CoolwalkFacetChrome.install(env)
         }
-        AaCoolwalkAutoOpenHook.install(env, lpparam)
+        AaCoolwalkAutoOpenHook.install(env, target)
         logDebug(tagName, "AaUiHook: Coolwalk hooks installed (:projection)")
     }
 
@@ -292,10 +305,10 @@ object AaUiHook: AaHook() {
         }
     }
 
-    override fun hook(config: SharedPreferences?, lpparam: XC_LoadPackage.LoadPackageParam) {
+    override fun hook(config: SharedPreferences?, target: HookTarget) {
         log(tagName,  "AaUiHook: ~~~~~~~~~~~~~~~~~~~~~~~~~~~ hideAaUiControls=$hideAaUiControls")
         if (hideAaUiControls) {
-            hookCoolwalk(lpparam)
+            hookCoolwalk(target)
             return
         }
         // 仅旧行为需要接管 View 点击监听（侧边栏图标改写点击目标）。

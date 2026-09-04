@@ -7,9 +7,9 @@ import android.util.Size
 import com.github.kyuubiran.ezxhelper.utils.hookAfter
 import com.github.kyuubiran.ezxhelper.utils.hookBefore
 import com.github.kyuubiran.ezxhelper.utils.loadClass
-import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.nitsuya.aa.display.util.AADisplayConfig
 import io.github.nitsuya.aa.display.xposed.hook.AaHook
+import io.github.nitsuya.aa.display.xposed.hook.HookTarget
 import io.github.nitsuya.aa.display.xposed.log
 import org.luckypray.dexkit.DexKitBridge
 import org.luckypray.dexkit.query.enums.StringMatchType
@@ -25,7 +25,7 @@ object AaDpiHook : AaHook() {
         return processCar == processName
     }
 
-    override fun loadDexClass(bridge: DexKitBridge, lpparam: XC_LoadPackage.LoadPackageParam) {
+    override fun loadDexClass(bridge: DexKitBridge, target: HookTarget) {
         val classes = bridge.findClass {
             searchPackages = listOf("")
             matcher {
@@ -80,7 +80,7 @@ object AaDpiHook : AaHook() {
         carDisplayConstructor.isAccessible = true
     }
 
-    override fun hook(config: SharedPreferences?, lpparam: XC_LoadPackage.LoadPackageParam) {
+    override fun hook(config: SharedPreferences?, target: HookTarget) {
         AADisplayConfig.AndroidAutoDpi.get(config).also { androidAutoDpi ->
             if (androidAutoDpi < 50) return@also
             displayParamsConstructor.hookAfter { param -> log(tagName, param.thisObject.toString()) }
