@@ -2,7 +2,7 @@
 
 ## v0.24#17.2-e2 (2026-09-02)
 
-基线：`4a9746b`（tag `v0.24.0`，`0.24#17.2-e1` / `3012`）。详见 `RELEASE_NOTES_v0.24#17.2-e2.md`。
+基线：`4a9746b`（tag `v0.24.0`，`0.24#17.2-e1` / `3012`）。详见 [docs/releases/v0.24-17.2-e2.md](docs/releases/v0.24-17.2-e2.md)。
 
 ### Added
 - 迁移到 libxposed 现代 Xposed API：新入口 `ModernInit`（`META-INF/xposed/java_init.list`），
@@ -64,7 +64,8 @@
 - `WazeHook` / `GboardImeHook` 不再各自持有 `XSharedPreferences`。
 
 ### Verification
-- 构建通过：`:aa-display:assembleRelease`；装机确认 `versionCode=3016`。- 环境：HyperOS `3.0.307.6`（Android 16）+ Android Auto `17.3.662854` + LSPosed，车机端为 DHU。
+- 构建通过：`:aa-display:assembleRelease`；装机确认 `versionCode=3016`。
+- 环境：HyperOS `3.0.307.6`（Android 16）+ Android Auto `17.3.662854` + LSPosed，车机端为 DHU。
 - APK 内 `META-INF/xposed/{java_init.list,module.prop,scope.list}` 与 `assets/xposed_init` 均在；
   `system` 与 gearhead 两侧现代入口均加载，`ModuleAssets` 解析出 modulePath，
   `RemoteConfigMirror` 绑定框架服务并同步 16 个 key。
@@ -84,7 +85,7 @@
 
 ## 0.24 (2026-08-30)
 
-基线：`c770d65` (`0.23#17.2-r5` / `3011`)。详见 `RELEASE_NOTES_v0.24.0.md`。
+基线：`c770d65` (`0.23#17.2-r5` / `3011`)。详见 [docs/releases/v0.24.0.md](docs/releases/v0.24.0.md)。
 
 ### Added
 - Coolwalk 全屏链路：折叠车机侧边栏，回收 rail 宽度后按整块车机宽度重新申请投屏画布；
