@@ -180,6 +180,9 @@ object AaUiHook: AaHook() {
         CoolwalkProjectionBoundsHook.rememberClassName(env.projectionBoundsClassName)
 
         env.startMethod = env.resolveCarStartActivityMethod()
+        if (env.startMethod == null) {
+            resolveProjectionLauncher(bridge, target)
+        }
 
         if (target.processName == processCar) {
             env.loadProjectionResources()
@@ -204,6 +207,56 @@ object AaUiHook: AaHook() {
                 env.layoutInfoConstructors.joinToString { "p${it.parameterCount}" },
         )
         env.loadProjectionResources()
+    }
+
+    /**
+     * AA 17.8+：`CarSystemUiControllerService` 已删除，启动入口变成 `ProjectionContext`
+     * 单例上的 `startCarActivity(Intent, ActivityOptions)`。用 AA 自己的字符串常量定位，
+     * 避免挑到同类里那个空实现的 `(Intent)V` 兄弟方法。
+     *
+     * 来源：移植自 lagXkjy/AADisplay 分支 AADisplay-Split-Lite (v0.24#17.8-r1)
+     * 的 `AaUiHook.resolveStartMethodLive`（GPLv3）。
+     */
+    private fun resolveProjectionLauncher(bridge: DexKitBridge, target: HookTarget) {
+        val hits = try {
+            bridge.findMethod {
+                searchPackages = listOf("")
+                matcher {
+                    usingStrings {
+                        add(
+                            CoolwalkHookEnv.PROJECTION_START_NEEDLE,
+                            StringMatchType.Equals,
+                            false,
+                        )
+                    }
+                }
+            }.mapNotNull { md ->
+                runCatching { md.getMethodInstance(target.classLoader) }.getOrNull()
+            }.filter { m ->
+                m.parameterTypes.size >= 2 &&
+                    m.parameterTypes[0] == Intent::class.java &&
+                    (m.returnType == Void.TYPE || m.returnType == Void::class.java)
+            }
+        } catch (e: Throwable) {
+            log(tagName, "AaUiHook: ProjectionContext DexKit failed", e)
+            return
+        }
+        val needle = hits.singleOrNull()
+        if (needle == null) {
+            log(
+                tagName,
+                "AaUiHook: ProjectionContext hits=${hits.size} " +
+                    hits.map { "${it.declaringClass.name}#${it.name}" },
+            )
+            return
+        }
+        if (!env.resolveProjectionLauncherStart(needle)) {
+            log(
+                tagName,
+                "AaUiHook: ProjectionContext resolve failed " +
+                    "${needle.declaringClass.name}#${needle.name}",
+            )
+        }
     }
 
     private fun hookCoolwalk(target: HookTarget) {

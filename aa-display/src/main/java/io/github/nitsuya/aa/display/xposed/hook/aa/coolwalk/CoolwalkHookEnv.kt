@@ -22,6 +22,12 @@ class CoolwalkHookEnv {
 
     var layoutInfoConstructors: List<Constructor<*>> = emptyList()
     var startMethod: Method? = null
+
+    /**
+     * 17.8+：启动入口是 `ProjectionContext` 单例上的实例方法，需要同名类里
+     * 返回自身的无参静态 getter 才能拿到 receiver。≤17.4 的 SysUi 静态方法为 null。
+     */
+    var startSingletonGetter: Method? = null
     @Volatile var hasVerticalRailField: Field? = null
     @Volatile var layoutResourceIdField: Field? = null
     var contentBoundsMethods: List<Method> = emptyList()
@@ -189,8 +195,86 @@ class CoolwalkHookEnv {
         return picked
     }
 
+    /**
+     * AA 17.8+：启动入口搬到了 `ProjectionContext` 单例的实例方法上，签名是
+     * `(Intent, ActivityOptions)V`。用 DexKit 按 AA 自己的字符串常量
+     * [PROJECTION_START_NEEDLE] 精确定位 —— 同类里还有个 `(Intent)V` 兄弟方法是
+     * 生命周期空实现，随手挑一个会拿到错的。
+     *
+     * 来源：移植自 lagXkjy/AADisplay 分支 AADisplay-Split-Lite (v0.24#17.8-r1)
+     * 的 `CoolwalkHookEnv.resolveProjectionLauncherStart`（GPLv3）。
+     */
+    fun resolveProjectionLauncherStart(needleMethod: Method): Boolean {
+        val hostClass = needleMethod.declaringClass
+        val params = needleMethod.parameterTypes
+        if (params.size < 2 || params[0] != Intent::class.java) {
+            log(TAG, "AaUiHook: ProjectionContext needle unexpected $needleMethod")
+            return false
+        }
+        if (needleMethod.returnType != Void.TYPE && needleMethod.returnType != Void::class.java) {
+            log(TAG, "AaUiHook: ProjectionContext needle not void: $needleMethod")
+            return false
+        }
+        val optionsCtor = runCatching {
+            params[1].getDeclaredConstructor().also { it.isAccessible = true }
+        }.getOrNull()
+        if (optionsCtor == null) {
+            log(TAG, "AaUiHook: options type has no no-arg ctor: ${params[1].name}")
+            return false
+        }
+        needleMethod.isAccessible = true
+        val getter = hostClass.declaredMethods.firstOrNull { m ->
+            Modifier.isStatic(m.modifiers) && m.parameterCount == 0 && m.returnType == hostClass
+        }
+        if (getter == null) {
+            log(TAG, "AaUiHook: singleton getter missing on ${hostClass.name}")
+            return false
+        }
+        getter.isAccessible = true
+        startMethod = needleMethod
+        startSingletonGetter = getter
+        logDebug(
+            TAG,
+            "AaUiHook: startMethod=ProjectionContext.${needleMethod.name}" +
+                "(Intent, ${params[1].simpleName}) getter=${getter.name} class=${hostClass.name}",
+        )
+        return true
+    }
+
+    /** 调用已解析的启动入口：静态（≤17.4）/ 单例实例（17.8+）。 */
+    fun invokeStartCarActivity(intent: Intent) {
+        val method = startMethod ?: throw IllegalStateException("startMethod null")
+        if (Modifier.isStatic(method.modifiers)) {
+            method.invoke(null, intent)
+            return
+        }
+        val getter = startSingletonGetter
+            ?: throw IllegalStateException("startSingletonGetter null")
+        val receiver = getter.invoke(null)
+            ?: throw NullPointerException("ProjectionContext singleton null (not connected)")
+        when (method.parameterTypes.size) {
+            1 -> method.invoke(receiver, intent)
+            2 -> {
+                val options = method.parameterTypes[1].getDeclaredConstructor().apply {
+                    isAccessible = true
+                }.newInstance()
+                method.invoke(receiver, intent, options)
+            }
+            else -> throw IllegalStateException(
+                "startMethod arity ${method.parameterTypes.size}: $method",
+            )
+        }
+    }
+
     companion object {
         const val TAG = "AAD_AaUiHook"
+
+        /**
+         * DexKit needle：AA 17.8 里 ProjectionContext 启动器的字符串常量。
+         *
+         * 来源：lagXkjy/AADisplay 分支 AADisplay-Split-Lite (v0.24#17.8-r1)，GPLv3。
+         */
+        const val PROJECTION_START_NEEDLE = "startCarActivity(intent:%s, activityOptions:%s)"
 
         val RAIL_WIDTH_DIMEN_NAMES = arrayOf(
             "cielo_vertical_rail_width",

@@ -28,7 +28,7 @@ object AaCoolwalkAutoOpenHook {
     fun install(env: CoolwalkHookEnv, target: HookTarget) {
         logDebug(
             CoolwalkHookEnv.TAG,
-            "AaUiHook: AutoOpen startMethod=${env.startMethod?.name} enabled=${env.autoOpenEnabled}",
+            "AaUiHook: AutoOpen enabled=${env.autoOpenEnabled} launcher=CarFirstParty",
         )
         registerAutoOpenShownReceiver(env)
         if (env.autoOpenEnabled) {
@@ -161,8 +161,28 @@ object AaCoolwalkAutoOpenHook {
         )
     }
 
-    private fun isAutoOpenNotReady(t: Throwable): Boolean =
-        t is IllegalStateException || t is NullPointerException
+    /**
+     * AA 17.8 删掉了 `CarSystemUiControllerService`，旧的 `startMethod` 不再存在。
+     * 改走 aauto 的一体化车机客户端（`AaMainFragment` 用的也是这条路径），
+     * 不再依赖 gearhead 内部的混淆类名。连接是异步的：成败都在回调里，
+     * 失败只记日志，不会影响已经起来的投屏。
+     */
+    /**
+     * 通过 AA 自己的 CarActivity 启动入口把 AADisplay 送上当前车机画面。
+     *
+     * ≤17.4 是 `CarSystemUiControllerService.a(Intent)` 静态方法；
+     * 17.8 删掉了那个类，入口变成 `ProjectionContext` 单例上的
+     * `startCarActivity(Intent, ActivityOptions)`。
+     * 两种形态都由 [CoolwalkHookEnv.invokeStartCarActivity] 统一处理。
+     */
+    private fun launchAaDisplay(env: CoolwalkHookEnv) {
+        env.invokeStartCarActivity(aaDisplayLaunchIntent())
+    }
+
+    private fun aaDisplayLaunchIntent(): Intent = Intent().apply {
+        component = ComponentName(BuildConfig.APPLICATION_ID, AaActivityService::class.java.name)
+        putExtra("android.intent.extra.PACKAGE_NAME", BuildConfig.APPLICATION_ID)
+    }
 
     private fun tryAutoOpenAaDisplay(env: CoolwalkHookEnv, delayMs: Long) {
         if (env.mAaDisplayShownThisSession) {
@@ -170,34 +190,25 @@ object AaCoolwalkAutoOpenHook {
             return
         }
         if (!env.mAutoOpenArmed) return
-        val method = env.startMethod ?: return
+        if (env.startMethod == null) return
         val label = when {
             delayMs == -2L -> "full-bleed-relaunch"
             delayMs < 0L -> "connected"
             else -> "${delayMs}ms"
         }
         try {
-            method.invoke(null, aaDisplayLaunchIntent())
+            launchAaDisplay(env)
             logDebug(CoolwalkHookEnv.TAG, "AaUiHook: AutoOpen invoke at $label")
         } catch (e: InvocationTargetException) {
             val cause = e.cause ?: e
-            if (isAutoOpenNotReady(cause)) {
-                logDebug(CoolwalkHookEnv.TAG, "AaUiHook: AutoOpen not-ready at $label: ${cause.message}")
-            } else {
-                log(CoolwalkHookEnv.TAG, "AaUiHook: AutoOpen invoke failed at $label", cause)
-            }
-        } catch (e: IllegalStateException) {
-            logDebug(CoolwalkHookEnv.TAG, "AaUiHook: AutoOpen not-ready at $label: ${e.message}")
+            logDebug(CoolwalkHookEnv.TAG, "AaUiHook: AutoOpen not-ready at $label: ${cause.message}")
         } catch (e: NullPointerException) {
             logDebug(CoolwalkHookEnv.TAG, "AaUiHook: AutoOpen not-ready at $label: ${e.message}")
+        } catch (e: IllegalStateException) {
+            logDebug(CoolwalkHookEnv.TAG, "AaUiHook: AutoOpen not-ready at $label: ${e.message}")
         } catch (e: Throwable) {
-            log(CoolwalkHookEnv.TAG, "AaUiHook: AutoOpen invoke failed at $label", e)
+            log(CoolwalkHookEnv.TAG, "AaUiHook: AutoOpen failed at $label", e)
         }
-    }
-
-    private fun aaDisplayLaunchIntent(): Intent = Intent().apply {
-        component = ComponentName(BuildConfig.APPLICATION_ID, AaActivityService::class.java.name)
-        putExtra("android.intent.extra.PACKAGE_NAME", BuildConfig.APPLICATION_ID)
     }
 
     private fun registerAutoOpenShownReceiver(env: CoolwalkHookEnv) {
@@ -227,7 +238,9 @@ object AaCoolwalkAutoOpenHook {
         val svcClass = try {
             loadClass("com.google.android.projection.gearhead.service.CarSystemUiControllerService")
         } catch (e: Throwable) {
-            log(CoolwalkHookEnv.TAG, "AaUiHook: AutoOpen connected-kick: SysUi service missing", e)
+            // AA 17.8 起该 service 已移除。AutoOpen 现在走车机 SDK（launchAaDisplayOnCar），
+            // 这条 kick 只是旧版本上的额外加成，缺失属预期，不是错误。
+            logDebug(CoolwalkHookEnv.TAG, "AaUiHook: AutoOpen connected-kick: SysUi service absent (expected on AA 17.8+)")
             return
         }
         try {

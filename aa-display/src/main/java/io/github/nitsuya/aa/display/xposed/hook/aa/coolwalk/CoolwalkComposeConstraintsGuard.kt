@@ -31,7 +31,11 @@ import java.lang.reflect.Modifier
  */
 object CoolwalkComposeConstraintsGuard {
 
-    private const val FAILURE_MARKER = "maxWidth must be >= than minWidth"
+    // AA 17.8 把这条断言改成了带格式符的版本：
+    //   "maxWidth(%d) must be >= than minWidth(%d),\nmaxHeight(%d) must be >= than minHeight(%d)"
+    // 旧串 "maxWidth must be >= than minWidth" 因此不再是被包含的子串，DexKit 命中为 0。
+    // 取两段共有的中缀 "must be >= than minWidth"：17.2 与 17.8 都能匹配。
+    private const val FAILURE_MARKER = "must be >= than minWidth"
     private const val LOG_LIMIT = 8
 
     /**
