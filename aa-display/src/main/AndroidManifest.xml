@@ -27,11 +27,8 @@
             android:name="xposeddescription"
             android:value="@string/xposeddescription" />
         <!--
-            legacy 通道的 API 版本声明。停在 82（与 compileOnly 的
-            de.robv.android.xposed_api_82.jar 一致）：LSPosed 对声明 >= 93 的 legacy 模块
-            启用 New XSharedPreferences，而 nsp 在 2.3.0 被移除。这里声明 82 + 模块自己
-            维护的世界可读 xml，就是 LSPosed 给 legacy 模块的另一条兼容路径。
-            现代框架只读 META-INF/xposed/module.prop，不看这条。
+            Legacy 通道声明 API 82，避免 LSPosed 2.3.0 将模块识别为依赖已废弃的
+            New XSharedPreferences。现代通道由 META-INF/xposed/module.prop 管理。
         -->
         <meta-data
             android:name="xposedminversion"
