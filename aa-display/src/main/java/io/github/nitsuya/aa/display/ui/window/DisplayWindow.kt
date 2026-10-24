@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.graphics.PixelFormat
 import android.os.CountDownTimer
+import android.os.IBinder
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.*
@@ -58,6 +59,11 @@ class DisplayWindow(
     private var mControllerCollapsed = true
     private var mControllerDockRight = true
     private val mControllerPeekPx by lazy { (mContext.resources.displayMetrics.density * 14f).toInt() }
+
+    /** 控制器根布局为卡片阴影让出的透明边，贴边坐标要按它回退（见 applyControllerDockPosition） */
+    private val mControllerShadowPadPx by lazy {
+        mContext.resources.getDimensionPixelSize(R.dimen.window_shadow_pad)
+    }
 
     /**
      * 镜像小窗的几何状态（MIUI 小窗逻辑：整体可拖动、可等比缩放）。
@@ -118,6 +124,39 @@ class DisplayWindow(
 
     private var mDisplayRatio = 1f
     private var mDisplayPower = true
+
+    /**
+     * Android 16 removed SurfaceControl.getInternalDisplayToken().  Obtain the primary physical
+     * display token from the Android 16 SurfaceControl API, then retain the old lookup for
+     * releases which still expose it.
+     */
+    private val mInternalDisplayToken: IBinder by lazy {
+        runCatching {
+            val surfaceControl = Class.forName("android.view.SurfaceControl")
+            val displayIds = surfaceControl
+                .getDeclaredMethod("getPhysicalDisplayIds")
+                .apply { isAccessible = true }
+                .invoke(null) as LongArray
+            require(displayIds.isNotEmpty()) { "no physical displays" }
+            surfaceControl
+                .getDeclaredMethod("getPhysicalDisplayToken", Long::class.javaPrimitiveType)
+                .apply { isAccessible = true }
+                .invoke(null, displayIds.first()) as IBinder
+        }.onSuccess {
+            log(TAG, "display power: using SurfaceControl physical display token")
+        }.getOrElse { physicalTokenError ->
+            runCatching {
+                SurfaceControlHidden.getInternalDisplayToken()
+            }.onSuccess {
+                log(TAG, "display power: using legacy SurfaceControl display token")
+            }.getOrElse { legacyError ->
+                throw IllegalStateException(
+                    "cannot obtain internal display token; physicalDisplay=$physicalTokenError, " +
+                        "SurfaceControl=$legacyError"
+                )
+            }
+        }
+    }
 
     private var mDestroyJob: Job? = null
     private var mChangeAlphaCountDownTimer = object : CountDownTimer(5000,5000){
@@ -625,12 +664,15 @@ class DisplayWindow(
     fun toggleDisplayPower(displayPower: Boolean = !mDisplayPower){
         try {
             if(mScreenOffReplaceLockScreen){
-                mDisplayPower = displayPower
-                if(mDisplayPower){
-                    SurfaceControlHidden.setDisplayPowerMode(SurfaceControlHidden.getInternalDisplayToken(), SurfaceControlHidden.POWER_MODE_NORMAL)
+                if (mDisplayPower == displayPower) return
+                val mode = if (displayPower) {
+                    SurfaceControlHidden.POWER_MODE_NORMAL
                 } else {
-                    SurfaceControlHidden.setDisplayPowerMode(SurfaceControlHidden.getInternalDisplayToken(), SurfaceControlHidden.POWER_MODE_OFF)
+                    SurfaceControlHidden.POWER_MODE_OFF
                 }
+                SurfaceControlHidden.setDisplayPowerMode(mInternalDisplayToken, mode)
+                mDisplayPower = displayPower
+                log(TAG, "display power: ${if (displayPower) "on" else "off"}")
             } else {
                 Instances.powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "${BuildConfig.APPLICATION_ID}:wakeup").apply {
                     acquire()
@@ -743,7 +785,11 @@ class DisplayWindow(
         val visibleHeight = getControllerVisibleHeight(binding)
         if (visibleWidth <= 0 || visibleHeight <= 0) return
 
-        mControllerLayoutParams.x = if (mControllerCollapsed) {
+        // 根布局给卡片阴影留了一圈透明 padding，卡片左上角相对窗口原点偏移了一个 pad，
+        // 而 x/y 定位的是窗口。四种贴边情况算出来的都是「卡片该在哪」，所以统一减掉
+        // 一个 pad；否则卡片会离屏幕边缘差一个 pad，收起时露出的宽度也少一个 pad。
+        val pad = mControllerShadowPadPx
+        val dockX = if (mControllerCollapsed) {
             if (mControllerDockRight) {
                 displayMetrics.widthPixels - mControllerPeekPx
             } else {
@@ -756,9 +802,10 @@ class DisplayWindow(
                 0
             }
         }
+        mControllerLayoutParams.x = dockX - pad
         mControllerLayoutParams.y = mControllerLayoutParams.y.coerceIn(
-            0,
-            (displayMetrics.heightPixels - visibleHeight).coerceAtLeast(0)
+            -pad,
+            (displayMetrics.heightPixels - visibleHeight - pad).coerceAtLeast(-pad)
         )
         tryOrNull { mWindowManager.updateViewLayout(binding.root, mControllerLayoutParams) }
     }

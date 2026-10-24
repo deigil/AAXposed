@@ -82,36 +82,95 @@ object AndroidHook : BaseHook() {
     }
 
     object Power {
-        private val powerPress by lazy {
+        /**
+         * HyperOS 3 moved short-press dispatch into its Miui shortcut rule.  It receives the
+         * final press count, and forwarding it to OriginalPowerKeyRuleBridge locks the device.
+         */
+        private val miuiPowerPresses by lazy {
+            if (!IsSystemEnv) return@lazy emptyList()
+            runCatching {
+                findAllMethods(
+                    loadClass("com.android.server.input.shortcut.singlekeyrule.PowerKeyRule"),
+                ) {
+                        name == "onMiuiPress" &&
+                            parameterTypes.contentEquals(
+                                arrayOf(Long::class.javaPrimitiveType, Int::class.javaPrimitiveType),
+                            )
+                }
+                    .also { methods ->
+                        if (methods.isNotEmpty()) {
+                            log(tagName, "Power: matched ${methods.size} HyperOS power handler(s)")
+                        }
+                    }
+            }.getOrElse { error ->
+                log(tagName, "Power HyperOS handler lookup", error)
+                emptyList()
+            }
+        }
+
+        private val powerPresses by lazy {
             if(!IsSystemEnv) return@lazy null
             try{
-                findMethod("com.android.server.policy.PhoneWindowManager") {
-                    name == "powerPress"
-                            && parameterCount == 3
-                            && parameterTypes[0] == Long::class.javaPrimitiveType //eventTime
-                            && parameterTypes[1] == Int::class.javaPrimitiveType //count
-                            && parameterTypes[2] == Boolean::class.javaPrimitiveType //beganFromNonInteractive
-                }
+                val policyClass = loadClass("com.android.server.policy.PhoneWindowManager")
+                generateSequence(policyClass) { it.superclass }
+                    .flatMap { it.declaredMethods.asSequence() }
+                    .filter {
+                        if (it.name != "powerPress") return@filter false
+                        val types = it.parameterTypes
+                        types.size == 3
+                            && types[0] == Long::class.javaPrimitiveType
+                            && types[1] == Int::class.javaPrimitiveType
+                            // Android 12-15: (long, int, boolean); Android 16: (long, int, int).
+                            && (types[2] == Boolean::class.javaPrimitiveType
+                                || types[2] == Int::class.javaPrimitiveType)
+                    }
+                    .distinctBy { it.declaringClass.name + it.toGenericString() }
+                    .toList()
+                    .also { methods ->
+                        log(tagName, "Power: matched ${methods.size} powerPress handler(s): " +
+                            methods.joinToString { it.declaringClass.name + "#" + it.name })
+                    }
+                    .takeIf { it.isNotEmpty() }
             } catch (e: Throwable){
                 log(tagName,  "Power PhoneWindowManager.powerPress", e)
                 null
             }
         }
-        private var hookPower : XC_MethodHook.Unhook? = null
+        private var hookPower : List<XC_MethodHook.Unhook> = emptyList()
         fun hook(){
             unHook()
-            hookPower = powerPress?.hookBefore {
-                if (!(it.args[2] as Boolean)) {
+            hookPower = miuiPowerPresses.map { method -> method.hookBefore { param ->
+                val count = param.args[1] as Int
+                if (count == 1) {
+                    log(tagName, "Power: intercepted HyperOS short press")
                     CoreApi.toggleDisplayPower()
-                    it.abortMethod()
-                } else {
-                    CoreApi.displayPower(true)
+                    param.abortMethod()
                 }
+            } }.ifEmpty {
+                powerPresses?.map { method -> method.hookBefore {
+                    if (method.parameterTypes[2] == Int::class.javaPrimitiveType) {
+                        log(tagName, "Power: intercepted Android 16 power press")
+                        CoreApi.toggleDisplayPower()
+                        it.abortMethod()
+                    } else if (!(it.args[2] as Boolean)) {
+                        log(tagName, "Power: intercepted interactive power press")
+                        CoreApi.toggleDisplayPower()
+                        it.abortMethod()
+                    } else {
+                        log(tagName, "Power: waking display from non-interactive power press")
+                        CoreApi.displayPower(true)
+                    }
+                } } ?: emptyList()
+            }
+            if (hookPower.isEmpty()) {
+                log(tagName, "Power: no powerPress hook installed")
+            } else {
+                log(tagName, "Power: installed ${hookPower.size} powerPress hook(s)")
             }
         }
         fun unHook(){
-            hookPower?.unhook()
-            hookPower = null
+            hookPower.forEach { it.unhook() }
+            hookPower = emptyList()
         }
     }
     object FuckAppUseApplicationContext {
