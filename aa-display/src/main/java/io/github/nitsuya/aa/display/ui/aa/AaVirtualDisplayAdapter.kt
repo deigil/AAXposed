@@ -221,7 +221,17 @@ class AaVirtualDisplayAdapter(
     }
 
     fun onDestroy() {
+        if (mIsDestroying) {
+            log(TAG, "onDestroy ignored: teardown already in progress")
+            return
+        }
         mIsDestroying = true
+        if (!::mVirtualDisplay.isInitialized) {
+            log(TAG, "onDestroy ignored: virtual display was never initialized")
+            tryOrNull { CoreManagerService.systemContext.unbindService(mServiceConnection) }
+            mShellManager = null
+            return
+        }
         trackPackage(mLauncherPackage, 0)
         trackPackage(mHomePackage, 0)
         val protectedPackages = linkedSetOf<String>().apply {
@@ -260,21 +270,34 @@ class AaVirtualDisplayAdapter(
                 }
             }
         }
-        // ShellManager may already be dead during teardown; never let this crash system_server.
-        try {
-            mShellManager?.destroyVirtualDisplayAfter()
-        } catch (e: Throwable) {
-            log(TAG, "onDestroy destroyVirtualDisplayAfter ignored:", e)
-        } finally {
-            mShellManager = null
-        }
-        tryOrNull { CoreManagerService.systemContext.unbindService(mServiceConnection) }
         mSurfaceControls.values.forEach { it.release() }
         mSurfaceControls.clear()
         tryOrNull { mDisplayWindowManager.removeView(mForceView) }
-        mVirtualDisplay.release()
+        try {
+            mVirtualDisplay.release()
+            log(TAG, "virtual display released")
+        } catch (e: Throwable) {
+            log(TAG, "virtual display release failed", e)
+        }
         mDisplayId = Display.INVALID_DISPLAY
         mDensityDpi = 0
+
+        // The configured teardown commands are explicitly post-release. Keep the service bound
+        // until its Binder call finishes so a valid connected session cannot be silently skipped.
+        try {
+            val shellManager = mShellManager
+            if (shellManager == null) {
+                log(TAG, "onDestroy destroyVirtualDisplayAfter skipped: ShellManagerService unavailable")
+            } else {
+                val succeeded = shellManager.destroyVirtualDisplayAfter()
+                log(TAG, "onDestroy destroyVirtualDisplayAfter: success=$succeeded")
+            }
+        } catch (e: Throwable) {
+            log(TAG, "onDestroy destroyVirtualDisplayAfter failed", e)
+        } finally {
+            mShellManager = null
+            tryOrNull { CoreManagerService.systemContext.unbindService(mServiceConnection) }
+        }
     }
 
     private fun getForegroundPackagesOnDisplay(displayId: Int): Set<String> {

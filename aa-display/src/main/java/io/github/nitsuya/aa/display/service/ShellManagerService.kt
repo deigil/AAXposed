@@ -17,12 +17,41 @@ class ShellManagerService: Service() {
 
     private lateinit var config: SharedPreferences
     private val stub: IShellManager.Stub = object: IShellManager.Stub(){
-        override fun createVirtualDisplayBefore(): Boolean = execConfigShell(AADisplayConfig.CreateVirtualDisplayBefore.get(config))
-        override fun destroyVirtualDisplayAfter(): Boolean = execConfigShell(AADisplayConfig.DestroyVirtualDisplayAfter.get(config))
+        override fun createVirtualDisplayBefore(): Boolean = execConfigShell(
+            "createVirtualDisplayBefore",
+            AADisplayConfig.CreateVirtualDisplayBefore.get(config)
+        )
 
-        private fun execConfigShell(commands: Array<String>): Boolean {
-            if(commands.isEmpty()) return true;
-            return Shell.getShell().newJob().add(*commands).exec().isSuccess
+        override fun destroyVirtualDisplayAfter(): Boolean = execConfigShell(
+            "destroyVirtualDisplayAfter",
+            AADisplayConfig.DestroyVirtualDisplayAfter.get(config)
+        )
+
+        private fun execConfigShell(phase: String, commands: Array<String>): Boolean {
+            if (commands.isEmpty()) {
+                Log.i(TAG, "shell[$phase] skipped: no configured commands")
+                return true
+            }
+
+            return try {
+                val shell = Shell.getShell()
+                if (!shell.isRoot) {
+                    Log.e(TAG, "shell[$phase] failed: root shell unavailable")
+                    return false
+                }
+                val result = shell.newJob().add(*commands).exec()
+                Log.i(
+                    TAG,
+                    "shell[$phase]: success=${result.isSuccess}, code=${result.code}, " +
+                        "commands=${commands.joinToString(" | ")}, " +
+                        "out=${result.out.joinToString("\\n").take(512)}, " +
+                        "err=${result.err.joinToString("\\n").take(512)}"
+                )
+                result.isSuccess
+            } catch (e: Throwable) {
+                Log.e(TAG, "shell[$phase] threw", e)
+                false
+            }
         }
     }
     override fun onCreate() {

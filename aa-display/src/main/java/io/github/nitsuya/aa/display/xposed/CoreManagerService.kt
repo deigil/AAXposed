@@ -450,21 +450,30 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
 
     override fun onDestroyDisplay(){
         runMain {
+            val finishDestroy = {
+                try {
+                    mAaVirtualDisplayAdapter?.onDestroy()
+                } catch (t: Throwable) {
+                    log(TAG, "onDestroyDisplay adapter teardown failed", t)
+                } finally {
+                    mDisplayWindow = null
+                    mAaVirtualDisplayAdapter = null
+                    mDisplayCreateInProgress = false
+                    clearDisplayProfileLock()
+                    restoreEyeCareAfterProjection()
+                    markProjectionState(false)
+                }
+            }
             val window = mDisplayWindow
             if (window == null) {
-                // 悬浮窗还没建起来就断开：延迟销毁回调不会触发，护眼必须在这里还原。
-                restoreEyeCareAfterProjection()
-                markProjectionState(false)
+                // The control window may not exist yet, but the adapter can already own a
+                // VirtualDisplay. Do not skip its release or its post-destroy shell commands.
+                log(TAG, "onDestroyDisplay without DisplayWindow")
+                finishDestroy()
                 return@runMain
             }
             window.onDestroy {
-                mAaVirtualDisplayAdapter?.onDestroy()
-                mDisplayWindow = null
-                mAaVirtualDisplayAdapter = null
-                mDisplayCreateInProgress = false
-                clearDisplayProfileLock()
-                restoreEyeCareAfterProjection()
-                markProjectionState(false)
+                finishDestroy()
             }
         }
     }
