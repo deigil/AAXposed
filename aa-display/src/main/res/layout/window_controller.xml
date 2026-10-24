@@ -7,13 +7,19 @@
     colorOnPrimaryContainer / colorOutline，深浅色自动切换。
   注意：cv_handle / cv_panel / ll_panel 的 id 与尺寸被 DisplayWindow 的
   贴边逻辑（applyControllerDockPosition）读取，勿改名。
+  根布局留 @dimen/window_shadow_pad 的 padding 供卡片阴影绘制（窗口是 WRAP_CONTENT，
+  不留边阴影会被窗口表面整块裁掉）；卡片相对窗口原点因此偏移了一个 pad，
+  applyControllerDockPosition 里的贴边坐标必须减掉它。
 -->
 <FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="wrap_content"
-    android:layout_height="wrap_content">
+    android:layout_height="wrap_content"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:padding="@dimen/window_shadow_pad">
 
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/cv_handle"

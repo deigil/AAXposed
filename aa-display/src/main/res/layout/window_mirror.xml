@@ -8,7 +8,8 @@
   - 多任务面板 ll_recent_task 叠在车机画面上方，不再占用全屏。
   id（cv_app / sv_mirror / ll_mirror_top_bar / rl_mirror_nav / iv_resize / ib_close /
   ll_recent_task / rv_recent_task_left,right 等）被 DisplayWindow 直接引用，勿改名。
-  根布局留 @dimen/mirror_window_shadow_pad 的 padding 供卡片阴影绘制。
+  根布局留 @dimen/mirror_window_shadow_pad 的 padding 供卡片阴影绘制，
+  mirror_card_elevation 必须明显小于这个 padding，否则阴影渐变会在窗口边界被切断。
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -27,7 +28,9 @@
         android:layout_height="wrap_content"
         app:cardBackgroundColor="?colorPrimaryContainer"
         app:cardCornerRadius="@dimen/mirror_card_radius"
-        app:cardElevation="@dimen/mirror_card_elevation">
+        app:cardElevation="@dimen/mirror_card_elevation"
+        app:strokeColor="?colorOutline"
+        app:strokeWidth="@dimen/window_stroke_width">
 
         <LinearLayout
             android:layout_width="wrap_content"

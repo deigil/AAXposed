@@ -8,12 +8,24 @@
     <dimen name="window_panel_radius">26dp</dimen>
     <dimen name="window_handle_radius">22dp</dimen>
     <dimen name="window_stroke_width">0.5dp</dimen>
-    <dimen name="window_panel_elevation">6dp</dimen>
+    <!--
+        胶囊/面板的阴影高度。和镜像窗同一条约束：阴影范围约为 elevation 的 1.5 倍，
+        必须小于根布局让出的 window_shadow_pad，否则渐变会被窗口边界切断。
+    -->
+    <dimen name="window_panel_elevation">3dp</dimen>
+    <!-- 控制器根布局为卡片阴影让出的透明边，改这个值要同步 applyControllerDockPosition -->
+    <dimen name="window_shadow_pad">6dp</dimen>
     <dimen name="window_destroy_text_size">11sp</dimen>
 
     <!-- 手机端镜像窗（MIUI 小窗） -->
     <dimen name="mirror_card_radius">18dp</dimen>
-    <dimen name="mirror_card_elevation">12dp</dimen>
+    <!--
+        卡片阴影的高度。平台 spot shadow 的模糊半径和向下偏移都随 elevation 线性放大，
+        实测 12dp 时阴影铺出去 15dp 以上，而窗口只有 mirror_window_shadow_pad 这么多
+        余量，渐变没淡完就被窗口边界切断，四周留下一圈肉眼可见的直线分界。
+        取 4dp：阴影范围约 6dp，完整落在 padding 里面。
+    -->
+    <dimen name="mirror_card_elevation">4dp</dimen>
     <dimen name="mirror_nav_btn_size">48dp</dimen>
     <dimen name="mirror_nav_btn_padding">12dp</dimen>
     <!-- 卡片阴影靠根布局 padding 让出空间，否则会被窗口边界裁掉 -->
