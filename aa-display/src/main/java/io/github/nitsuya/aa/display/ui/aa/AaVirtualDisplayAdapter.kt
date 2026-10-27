@@ -175,7 +175,7 @@ class AaVirtualDisplayAdapter(
                 setShouldShowSystemDecors(mDisplayId, false)
             }
         } catch (e : Throwable){
-            log(TAG, "设置虚拟屏幕参数失败: ", e)
+            log(TAG, "Failed to set virtual display parameters: ", e)
         }
         //mDisplayWindowManager = context.createDisplayContext(mVirtualDisplay.display).getSystemService(WindowManager::class.java).apply {
         mDisplayWindowManager = context.createDisplayContext(mVirtualDisplay.display).createWindowContext(mVirtualDisplay.display, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null).getSystemService(WindowManager::class.java).apply {
@@ -449,12 +449,10 @@ class AaVirtualDisplayAdapter(
                 "startActivityAsUser",
                 args(
                     Intent().apply {
-                        //addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         component = componentName
                         `package` = component?.packageName ?: return false
                         action = Intent.ACTION_VIEW
                         putExtra("displayId", mDisplayId)
-                        //putExtra("isUcarMode", true)
                         setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     },
                     ActivityOptions.makeBasic().apply {

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="ime_policy_keys">
+        <item>Show on phone screen (recommended)</item>
+        <item>Show on projected virtual display</item>
+        <item>Don\'t show keyboard</item>
+    </string-array>
+</resources>

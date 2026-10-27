@@ -53,8 +53,10 @@ sealed class AADisplayConfig<T>(val key: String) {
     //       代价是投屏期间手机自己横屏也不会悬浮。
     // 见 [io.github.nitsuya.aa.display.xposed.hook.GboardImeHook]
     object FixGboardFloatingIme: BooleanConfig("FixGboardFloatingIme", true)
-    // 默认走小爱语音助手，与 nitsuya 上游一致；支持 ${DisplayId} 占位符
-    object VoiceAssistShell: StringConfig("VoiceAssistShell", "am start com.miui.voiceassist/com.xiaomi.voiceassistant.CTAAlertActivity")
+    // 空 = 不接管，交给 Android Auto 自带的语音助手；非空 = 点击助手图标/方控语音键时执行的命令。
+    // 支持 ${DisplayId} 占位符。设置页会扫描手机上的语音助手并生成命令。
+    // （上游默认是小爱同学的 MIUI 专用命令，在非小米手机上无效，所以不再设默认值。）
+    object VoiceAssistShell: StringConfig("VoiceAssistShell", null)
     object CreateVirtualDisplayBefore: ArrayStringConfig("CreateVirtualDisplayBefore")
     object DestroyVirtualDisplayAfter: ArrayStringConfig("DestroyVirtualDisplayAfter")
     object ComGoogleAndroidGmsCarProps: PropertiesConfig("ComGoogleAndroidGmsCarProps")

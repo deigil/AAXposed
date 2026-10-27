@@ -17,6 +17,13 @@ import io.github.nitsuya.aa.display.util.AADisplayConfig
 import io.github.nitsuya.aa.display.util.GoogleMapsOnAaManager
 import io.github.nitsuya.aa.display.util.SharedPreferencesAccess
 import io.github.nitsuya.aa.display.util.WazeOnAaManager
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.text.InputType
+import android.widget.EditText
+import androidx.appcompat.app.AlertDialog
+import androidx.preference.ListPreference
 
 /**
  * 高级设置：把 AADisplayConfig 里的键位直接暴露成偏好项。
@@ -49,6 +56,137 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>(ActivitySettingsB
             }
             setPreferencesFromResource(R.xml.pref_aadisplay_config, rootKey)
             bindAppProjectionSwitches()
+            bindPickers()
+        }
+
+        // ---------------------------------------------------------------
+        // 选择式设置：预设 / 手机上已安装的选项 + 「自定义…」
+        // ---------------------------------------------------------------
+
+        private data class Choice(val label: String, val value: String)
+
+        private fun bindPickers() {
+            val dpiPresets = listOf(
+                Choice(getString(R.string.pref_dpi_auto), "0"),
+                *intArrayOf(120, 160, 213, 240, 280, 320, 360, 420, 480)
+                    .map { Choice(getString(R.string.pref_dpi_value, it), it.toString()) }
+                    .toTypedArray()
+            )
+            bindChoicePreference(
+                key = AADisplayConfig.VirtualDisplayDpi.key,
+                presets = { dpiPresets },
+                defaultValue = "0",
+                customInputType = InputType.TYPE_CLASS_NUMBER,
+                customCurrentLabel = { getString(R.string.pref_dpi_value_custom, it) }
+            )
+            bindChoicePreference(
+                key = AADisplayConfig.AndroidAutoDpi.key,
+                presets = { dpiPresets },
+                defaultValue = "0",
+                customInputType = InputType.TYPE_CLASS_NUMBER,
+                customCurrentLabel = { getString(R.string.pref_dpi_value_custom, it) }
+            )
+            bindChoicePreference(
+                key = AADisplayConfig.VoiceAssistShell.key,
+                presets = {
+                    listOf(Choice(getString(R.string.pref_voice_assist_default), "")) +
+                        queryVoiceAssistants()
+                },
+                defaultValue = "",
+                customInputType = InputType.TYPE_CLASS_TEXT,
+                customCurrentLabel = { getString(R.string.pref_voice_assist_custom_current, it) }
+            )
+        }
+
+        /**
+         * ListPreference 的 entries 在运行时生成：预设项 + （当前值不在预设里时的「自定义：…」）+ 「自定义…」。
+         * 选中「自定义…」会弹出文本框，保存后写回同一个 key，所以 Xposed 侧读取的格式不变。
+         */
+        private fun bindChoicePreference(
+            key: String,
+            presets: () -> List<Choice>,
+            defaultValue: String,
+            customInputType: Int,
+            customCurrentLabel: (String) -> String
+        ) {
+            val preference = findPreference<ListPreference>(key) ?: return
+            val presetList = presets()
+
+            fun refresh() {
+                val current = preference.value ?: defaultValue
+                val choices = presetList.toMutableList()
+                if (choices.none { it.value == current }) {
+                    choices.add(Choice(customCurrentLabel(current), current))
+                }
+                choices.add(Choice(getString(R.string.pref_custom_entry), CUSTOM_VALUE))
+                preference.entries = choices.map { it.label }.toTypedArray()
+                preference.entryValues = choices.map { it.value }.toTypedArray()
+                preference.summary = choices.first { it.value == current }.label
+                // value 为 null 时 ListPreference 不会高亮任何项
+                if (preference.value == null) preference.setValueIndex(
+                    choices.indexOfFirst { it.value == current }
+                )
+            }
+            refresh()
+
+            preference.setOnPreferenceChangeListener { _, newValue ->
+                if (newValue != CUSTOM_VALUE) {
+                    preference.value = newValue as String
+                    refresh()
+                    return@setOnPreferenceChangeListener false
+                }
+                val input = EditText(requireContext()).apply {
+                    inputType = customInputType
+                    setText(preference.value.orEmpty())
+                    setSelection(text.length)
+                }
+                AlertDialog.Builder(requireContext())
+                    .setTitle(preference.title)
+                    .setView(input)
+                    .setPositiveButton(android.R.string.ok) { _, _ ->
+                        preference.value = input.text.toString().trim()
+                        refresh()
+                    }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+                false
+            }
+        }
+
+        /**
+         * 扫描手机上声明了 VOICE_COMMAND / ASSIST / VOICE_ASSIST 的 Activity，
+         * 每个生成一条 `am start` 命令（单引号包起来，避免内部类名里的 `$` 被 shell 展开）。
+         */
+        private fun queryVoiceAssistants(): List<Choice> {
+            val pm = requireContext().packageManager
+            val actions = listOf(
+                Intent.ACTION_VOICE_COMMAND,
+                Intent.ACTION_ASSIST,
+                "android.intent.action.VOICE_ASSIST"
+            )
+            val found = linkedMapOf<String, Choice>()
+            for (action in actions) {
+                val intent = Intent(action)
+                val infos = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    pm.queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(0L))
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.queryIntentActivities(intent, 0)
+                }
+                for (info in infos) {
+                    val ai = info.activityInfo ?: continue
+                    if (!ai.exported) continue
+                    val component = "${ai.packageName}/${ai.name}"
+                    val label = info.loadLabel(pm)?.toString()?.ifBlank { null } ?: ai.packageName
+                    val command = "am start -a $action -n '$component'"
+                    // 同一个组件只保留第一个 action
+                    found.putIfAbsent(
+                        component,
+                        Choice("$label (${ai.packageName})", command)
+                    )
+                }
+            }
+            return found.values.sortedBy { it.label.lowercase() }
         }
 
         /**
@@ -120,6 +258,10 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>(ActivitySettingsB
 
         override fun onSharedPreferenceChanged(sp: SharedPreferences?, key: String?) {
             SharedPreferencesAccess.makeReadableForHooks(requireContext(), AADisplayConfig.ConfigName)
+        }
+
+        private companion object {
+            const val CUSTOM_VALUE = "__custom__"
         }
     }
 }

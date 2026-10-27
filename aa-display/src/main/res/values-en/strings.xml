@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AADisplay</string>
+    <string name="unknown_error">Unknown error</string>
+    <string name="details">Details</string>
+    <string name="xposeddescription">AADisplay</string>
+
+    <!-- Menu -->
+    <string name="menu_settings">Settings</string>
+    <string name="menu_github">Project page</string>
+
+    <!-- Module status -->
+    <string name="activated">Module active</string>
+    <string name="need_reboot">Reboot required</string>
+    <string name="not_activated">Module not active</string>
+    <string name="reboot">Reboot now</string>
+    <string name="status_aa_version">Android Auto %1$s</string>
+    <string name="status_aa_not_installed">Android Auto not installed</string>
+
+    <!-- Device info -->
+    <string name="section_device_info">Device info</string>
+    <string name="info_system_version">System version</string>
+    <string name="info_root_privilege">Root access</string>
+    <string name="info_yes">Granted</string>
+    <string name="info_no">Not granted</string>
+
+    <!-- Common settings -->
+    <string name="section_common_settings">Common settings</string>
+    <string name="more_settings_title">Advanced settings</string>
+    <string name="auto_open_title">Auto open</string>
+    <string name="auto_open_summary">Start projecting automatically after Android Auto connects</string>
+    <string name="disable_waze_on_aa_title">Disable Waze projection</string>
+    <string name="disable_waze_on_aa_summary">Keep Waze on the phone instead of casting it to the car</string>
+    <string name="disable_waze_on_aa_apply_failed">Failed to apply \"Disable Waze projection\"</string>
+    <string name="disable_google_maps_on_aa_title">Disable Google Maps projection</string>
+    <string name="disable_google_maps_on_aa_summary">Keep Google Maps on the phone instead of casting it to the car</string>
+    <string name="disable_google_maps_on_aa_apply_failed">Failed to apply \"Disable Google Maps projection\"</string>
+    <string name="default_launch_package_title">Projection launcher app</string>
+    <string name="default_launch_package_summary">App opened on the virtual display when AADisplay starts</string>
+    <string name="default_launch_package_empty">Select a projection launcher app</string>
+    <string name="default_home_detected">System default home: %1$s</string>
+    <string name="default_home_unknown">System default home: not detected</string>
+    <string name="launcher_list_missing">No launcher apps detected</string>
+    <string name="single_launcher_warning">Only one launcher is installed. Using the same app as the system default home causes severe crashes, so install a second launcher first.</string>
+    <string name="package_same_error">The projection launcher cannot be the same as the system default home</string>
+    <string name="package_validation_ok">This app is safe to use for projection</string>
+    <string name="save_settings">Save</string>
+    <string name="delay_destroy_time_title">Delayed destroy time</string>
+    <string name="delay_destroy_time_invalid">Select a valid delayed destroy time</string>
+    <string name="delay_60_seconds">60 seconds</string>
+    <string name="delay_120_seconds">120 seconds</string>
+    <string name="delay_180_seconds">180 seconds</string>
+    <string name="settings_saved_successfully">Settings saved</string>
+    <string name="settings_saved_pref_access_failed">Settings saved, but the module may not be able to read them</string>
+
+    <!-- Floating window -->
+    <string name="controller_open_menu">Open control panel</string>
+    <string name="controller_hide_menu">Collapse control panel</string>
+    <string name="controller_mirror">Mirror car screen on phone</string>
+    <string name="controller_extinguish">Screen off</string>
+    <string name="mirror_back">Back</string>
+    <string name="mirror_home">Home</string>
+    <string name="mirror_recent_task">Recents</string>
+    <string name="mirror_close">Collapse window</string>
+    <string name="mirror_resize">Drag to resize, long-press to reset</string>
+    <string name="mirror_size_reset">Size reset to default</string>
+
+    <!-- Advanced settings page -->
+    <string name="pref_category_display">Projection display</string>
+    <string name="pref_category_app_projection">App projection</string>
+    <string name="pref_category_fix">Compatibility fixes</string>
+    <string name="pref_category_interact">Interaction</string>
+    <string name="pref_category_shell">Shell commands</string>
+    <string name="pref_category_aa">Android Auto properties</string>
+
+    <string name="pref_ime_policy_title">Keyboard location</string>
+    <string name="pref_hide_aa_ui_title">Hide car UI controls</string>
+    <string name="pref_hide_aa_ui_summary">Hides the Coolwalk sidebar and projects full screen; controls move to the floating window on the phone. Turn OFF to get Home / Back / Recents buttons on the car screen instead</string>
+    <string name="pref_force_right_angle_title">Force square corners</string>
+    <string name="pref_force_right_angle_summary">Remove rounded-corner clipping on the car picture</string>
+    <string name="pref_close_launcher_dashboard_title">Block AA split-screen switching</string>
+    <string name="pref_close_launcher_dashboard_summary">Block Android Auto\'s dashboard split-screen layout</string>
+    <string name="pref_virtual_display_dpi_title">Virtual display DPI</string>
+    <string name="pref_virtual_display_dpi_summary">Blank or 0 follows the car</string>
+    <string name="pref_android_auto_dpi_title">Android Auto DPI</string>
+    <string name="pref_android_auto_dpi_summary">Blank or 0 leaves it unchanged</string>
+
+    <string name="pref_suspend_eye_care_title">Pause eye-care mode while projecting</string>
+    <string name="pref_suspend_eye_care_summary">MIUI/HyperOS eye-care mode tints the car picture yellow; it is switched off while projecting and restored afterwards (the phone also loses eye-care meanwhile)</string>
+    <string name="pref_force_app_fullscreen_title">Force apps to fill the car screen</string>
+    <string name="pref_force_app_fullscreen_summary">Portrait apps are letterboxed into a narrow centered strip on the landscape car screen by default; when enabled their fixed orientation request is ignored so they fill the screen</string>
+    <string name="pref_fix_gboard_ime_title">Fix Gboard floating keyboard</string>
+    <string name="pref_fix_gboard_ime_summary">While projecting, changes the floating mode Gboard reads back to the normal keyboard without writing Gboard settings. Usually unnecessary when the keyboard location is set to the phone screen</string>
+
+    <string name="pref_voice_assist_shell_title">Voice assistant</string>
+    <string name="pref_voice_assist_shell_summary">Command run when the assistant icon / steering wheel voice button is pressed; supports the ${DisplayId} placeholder</string>
+    <string name="pref_screen_off_replace_lock_title">Power button only turns the screen off</string>
+    <string name="pref_screen_off_replace_lock_summary">While projecting, the power button only turns the screen off instead of locking the device</string>
+
+    <string name="pref_create_before_title">Run before creating virtual display</string>
+    <string name="pref_create_before_summary">Shell commands run before projection starts, one per line</string>
+    <string name="pref_destroy_after_title">Run after destroying virtual display</string>
+    <string name="pref_destroy_after_summary">Shell commands run after projection ends, one per line</string>
+
+    <string name="pref_gearhead_props_title">gearhead property overrides</string>
+    <string name="pref_gms_car_props_title">gms.car property overrides</string>
+    <string name="pref_props_summary">key=value, one per line</string>
+
+    <!-- Pickers -->
+    <string name="pref_custom_entry">Custom…</string>
+    <string name="pref_dpi_auto">Automatic (follow car)</string>
+    <string name="pref_dpi_value">%1$d dpi</string>
+    <string name="pref_dpi_value_custom">%1$s dpi (custom)</string>
+    <string name="pref_voice_assist_default">Android Auto default assistant (don\'t intercept)</string>
+    <string name="pref_voice_assist_custom_current">Custom: %1$s</string>
+</resources>
