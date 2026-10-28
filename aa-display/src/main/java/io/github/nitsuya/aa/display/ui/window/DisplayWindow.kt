@@ -200,9 +200,6 @@ class DisplayWindow(
                     Intent.ACTION_SCREEN_ON -> Settings.Secure.putInt(context.contentResolver, "synergy_mode", 0)
                     Intent.ACTION_SCREEN_OFF -> Settings.Secure.putInt(context.contentResolver, "synergy_mode", 1)
                     //miui
-                    //Settings.Global.putInt(contentResolver, "ucar_casting_state", 1);
-                    //Settings.Secure.putInt(contentResolver, "screen_project_in_screening", 1);
-                    //Settings.Secure.putInt(context.contentResolver, "synergy_mode", 1);
                 }
             } catch (e : Throwable){}
         }

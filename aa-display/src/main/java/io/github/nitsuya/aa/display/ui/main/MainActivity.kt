@@ -180,7 +180,7 @@ class MainActivity :
 
             R.id.github -> {
                 startActivity(Intent(Intent.ACTION_VIEW).apply {
-                    data = "https://github.com/erxm/AADisplay".toUri()
+                    data = "https://github.com/deigil/AAXposed".toUri()
                 })
                 true
             }

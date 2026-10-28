@@ -104,4 +104,12 @@
     <string name="pref_gearhead_props_title">gearhead 属性覆盖</string>
     <string name="pref_gms_car_props_title">gms.car 属性覆盖</string>
     <string name="pref_props_summary">key=value，每行一条</string>
+
+    <!-- 选择式设置 -->
+    <string name="pref_custom_entry">自定义…</string>
+    <string name="pref_dpi_auto">自动（跟随车机）</string>
+    <string name="pref_dpi_value">%1$d dpi</string>
+    <string name="pref_dpi_value_custom">%1$s dpi（自定义）</string>
+    <string name="pref_voice_assist_default">使用 Android Auto 自带助手（不接管）</string>
+    <string name="pref_voice_assist_custom_current">自定义：%1$s</string>
 </resources>

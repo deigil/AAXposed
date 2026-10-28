@@ -40,20 +40,17 @@
             app:summary="@string/pref_close_launcher_dashboard_summary"
             app:iconSpaceReserved="false" />
 
-        <EditTextPreference
-            android:inputType="number"
+        <!-- entries/entryValues 由 SettingsActivity 运行时填充（预设 + 自定义） -->
+        <ListPreference
             app:key="VirtualDisplayDpi"
             app:title="@string/pref_virtual_display_dpi_title"
-            app:dialogMessage="@string/pref_virtual_display_dpi_summary"
-            app:useSimpleSummaryProvider="true"
+            app:dialogTitle="@string/pref_virtual_display_dpi_title"
             app:iconSpaceReserved="false" />
 
-        <EditTextPreference
-            android:inputType="number"
+        <ListPreference
             app:key="AndroidAutoDpi"
             app:title="@string/pref_android_auto_dpi_title"
-            app:dialogMessage="@string/pref_android_auto_dpi_summary"
-            app:useSimpleSummaryProvider="true"
+            app:dialogTitle="@string/pref_android_auto_dpi_title"
             app:iconSpaceReserved="false" />
 
     </PreferenceCategory>
@@ -120,14 +117,12 @@
         app:title="@string/pref_category_interact"
         app:iconSpaceReserved="false">
 
-        <EditTextPreference
-            android:inputType="text"
+        <!-- 选项由 SettingsActivity 扫描手机上的语音助手后填充，最后一项为自定义命令 -->
+        <ListPreference
             app:singleLineTitle="true"
             app:key="VoiceAssistShell"
-            app:defaultValue="am start com.miui.voiceassist/com.xiaomi.voiceassistant.CTAAlertActivity"
             app:title="@string/pref_voice_assist_shell_title"
-            app:dialogMessage="@string/pref_voice_assist_shell_summary"
-            app:useSimpleSummaryProvider="true"
+            app:dialogTitle="@string/pref_voice_assist_shell_title"
             app:iconSpaceReserved="false" />
 
         <rikka.material.preference.MaterialSwitchPreference

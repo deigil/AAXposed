@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased (deigil/AAXposed)
+
+Personal fork for Pixel 9 + Mercedes E53 (MBUX). Older entries below are inherited from upstream
+and are in Chinese.
+
+### Added
+- English translation of the whole UI (`values-en`).
+- Advanced settings: DPI (virtual display and Android Auto) is now a preset picker with a
+  "Custom…" option instead of a free-text field.
+- Advanced settings: the voice assistant is now a picker built from the activities installed on
+  the phone (`VOICE_COMMAND` / `ASSIST` / `VOICE_ASSIST`), plus "Android Auto default" and
+  "Custom…".
+- Manifest `<queries>` for the assistant intents so they are visible on Android 11+.
+
+### Changed
+- `VoiceAssistShell` no longer defaults to the Xiaomi-only `com.miui.voiceassist` command. Blank
+  now means "don't intercept the Android Auto voice button", which is what the hooks already
+  expected but could never reach before.
+- README rewritten in English; in-app GitHub menu now points to this repository.
+
+
 ## v0.24#17.2-e2 (2026-09-02)
 
 基线：`4a9746b`（tag `v0.24.0`，`0.24#17.2-e1` / `3012`）。详见 [docs/releases/v0.24-17.2-e2.md](docs/releases/v0.24-17.2-e2.md)。
