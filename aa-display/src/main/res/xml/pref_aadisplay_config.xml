@@ -21,7 +21,7 @@
 
         <rikka.material.preference.MaterialSwitchPreference
             app:key="HideAaUiControls"
-            app:defaultValue="true"
+            app:defaultValue="false"
             app:title="@string/pref_hide_aa_ui_title"
             app:summary="@string/pref_hide_aa_ui_summary"
             app:iconSpaceReserved="false" />

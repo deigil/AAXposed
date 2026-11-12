@@ -97,7 +97,7 @@ object AaUiHook: AaHook() {
         if (hideAaUiControls) {
             loadDexClassCoolwalk(bridge, target)
         } else {
-            loadDexClassLegacy(bridge)
+            loadDexClassLegacy(bridge, target)
         }
     }
 
@@ -296,7 +296,7 @@ object AaUiHook: AaHook() {
     // 旧行为：在车机侧边栏重建控件
     // ------------------------------------------------------------------
 
-    private fun loadDexClassLegacy(bridge: DexKitBridge) {
+    private fun loadDexClassLegacy(bridge: DexKitBridge, target: HookTarget) {
         val classes = bridge.findClass {
             searchPackages = listOf("")
             matcher {
@@ -317,8 +317,9 @@ object AaUiHook: AaHook() {
         try{
             startMethod = loadClass("com.google.android.projection.gearhead.service.CarSystemUiControllerService").staticMethod("a", null, argTypes(Intent::class.java))
         } catch (e: Throwable){
-            log(tagName,  "AaUiHook: not found CarSystemUiControllerService.a static method", e)
+            log(tagName,  "AaUiHook: not found CarSystemUiControllerService.a static method, using ProjectionContext", e)
         }
+        resolveProjectionLauncher(bridge, target)
 
         resLayoutGhFacetBarId = InitFields.appContext.resources.getIdentifier("gh_coolwalk_vertical_facet_bar", "layout", InitFields.appContext.packageName)
         resIdStatusBarId = getIdByName("status_bar")
@@ -473,10 +474,15 @@ object AaUiHook: AaHook() {
                     runMain {
                         delay(1000)
                         try{
-                            startMethod?.invoke(null, Intent().apply {
+                            val launchIntent = Intent().apply {
                                 component = ComponentName(BuildConfig.APPLICATION_ID, AaActivityService::class.java.name)
                                 putExtra("android.intent.extra.PACKAGE_NAME", BuildConfig.APPLICATION_ID)
-                            })
+                            }
+                            if (startMethod != null) {
+                                startMethod?.invoke(null, launchIntent)
+                            } else {
+                                env.launchAaDisplay()
+                            }
                         } catch (e: Throwable) {
                             log(tagName, "CarSystemUiControllerService.a start app error", e)
                         }
@@ -487,6 +493,8 @@ object AaUiHook: AaHook() {
                 val btn = ImageView(ctx).apply {
                     id = View.generateViewId()
                     layoutParams = ConstraintLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    isFocusable = true
+                    isClickable = true
                     setImageResource(resId)
                 }
                 block(btn)

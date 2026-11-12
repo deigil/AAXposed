@@ -26,7 +26,7 @@ sealed class AADisplayConfig<T>(val key: String) {
     // true：隐藏车机端 Coolwalk 侧边栏/UI 控件，投屏按整块车机宽度全屏；
     //       控制方案交给手机上的悬浮窗（DisplayWindow）。
     // false：回到旧行为，在车机侧边栏重建 home/全屏/返回/语音助手图标。
-    object HideAaUiControls: BooleanConfig("HideAaUiControls", true)
+    object HideAaUiControls: BooleanConfig("HideAaUiControls", false)
     // 投屏虚拟屏的输入法归属，见 [io.github.nitsuya.aa.display.ui.aa.AaVirtualDisplayAdapter.onConnected]
     // 0 = DISPLAY_IME_POLICY_LOCAL：键盘画在投屏那块 VirtualDisplay 上（挡掉车机半屏）
     // 1 = DISPLAY_IME_POLICY_FALLBACK_DISPLAY：键盘落到 default display，即手机主屏（默认，与 nitsuya 上游一致）
