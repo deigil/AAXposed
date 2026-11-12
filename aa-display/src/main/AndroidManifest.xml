@@ -9,6 +9,10 @@
             <category android:name="android.intent.category.HOME" />
         </intent>
         <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
             <action android:name="android.intent.action.VOICE_COMMAND" />
         </intent>
         <intent>
@@ -66,6 +70,10 @@
             android:exported="false"
             android:label="@string/more_settings_title"
             android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
+            android:name=".ui.remote.RemoteActivity"
+            android:exported="false"
+            android:label="@string/remote_title" />
         <service
             android:name=".service.AaActivityService"
             android:enabled="true"

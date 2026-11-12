@@ -9,11 +9,11 @@
         <item>com.ss.squarehome2</item>
     </string-array>
 
-    <!-- DisplayImePolicy，与 WindowManager.DISPLAY_IME_POLICY_* 对应 -->
+    <!-- DisplayImePolicy, maps to WindowManager.DISPLAY_IME_POLICY_* -->
     <string-array name="ime_policy_keys">
-        <item>显示在手机主屏（推荐）</item>
-        <item>显示在投屏虚拟屏</item>
-        <item>不显示键盘</item>
+        <item>Show on phone screen (recommended)</item>
+        <item>Show on projected virtual display</item>
+        <item>Don\'t show keyboard</item>
     </string-array>
     <string-array name="ime_policy_values">
         <item>1</item>

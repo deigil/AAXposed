@@ -27,6 +27,7 @@ import io.github.nitsuya.aa.display.BuildConfig
 import io.github.nitsuya.aa.display.CoreApi
 import io.github.nitsuya.aa.display.R
 import io.github.nitsuya.aa.display.databinding.ActivityMainBinding
+import io.github.nitsuya.aa.display.ui.remote.RemoteActivity
 import io.github.nitsuya.aa.display.ui.setting.SettingsActivity
 import io.github.nitsuya.aa.display.util.AADisplayConfig
 import io.github.nitsuya.aa.display.util.SharedPreferencesAccess
@@ -173,6 +174,11 @@ class MainActivity :
 
     override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
         return when (menuItem.itemId) {
+            R.id.remote -> {
+                startActivity(Intent(this, RemoteActivity::class.java))
+                true
+            }
+
             R.id.settings -> {
                 openAdvancedSettings()
                 true
