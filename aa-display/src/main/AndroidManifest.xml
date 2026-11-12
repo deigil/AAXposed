@@ -79,7 +79,7 @@
             android:enabled="true"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
-            android:label="AADisplay"
+            android:label="AAXposed"
             tools:ignore="ExportedService" >
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

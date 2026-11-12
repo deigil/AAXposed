@@ -5,4 +5,4 @@ pluginManagement {
 }
 
 include(":aa-display", ":lib-stub")
-rootProject.name = "AADisplay"
+rootProject.name = "AAXposed"

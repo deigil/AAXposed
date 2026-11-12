@@ -9,3 +9,6 @@
 # 101 and 102 have identical constructors, callback signatures, and IXposedService transaction codes.
 minApiVersion=101
 targetApiVersion=101
+name=AAXposed
+author=deigil (credits: Nitsuya, Stashboy, erxm, qiang)
+description=AAXposed — Android Auto virtual display projection (fork of AADisplay)

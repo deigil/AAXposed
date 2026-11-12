@@ -91,7 +91,7 @@ android {
         variant.outputs.all {
             val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
             val versionName = variant.versionName.replace("#", "-")
-            output.outputFileName = "aa-display-${versionName}.apk"
+            output.outputFileName = "aaxposed-${versionName}.apk"
         }
     }
     
