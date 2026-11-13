@@ -2,7 +2,9 @@ package io.github.nitsuya.aa.display.ui.aa.fragment
 
 import android.annotation.SuppressLint
 import android.content.*
+import android.graphics.Color
 import android.graphics.SurfaceTexture
+import android.graphics.drawable.GradientDrawable
 import android.os.SystemClock
 import android.support.car.Car
 import android.support.car.CarConnectionCallback
@@ -141,6 +143,7 @@ class AaMainFragment : BaseFragment<FragmentAaMainBinding>(FragmentAaMainBinding
     override fun initViews() {
         config = SharedPreferencesAccess.openForHooks(this.requireContext(), AADisplayConfig.ConfigName)
         Log.i(TAG, "initViews")
+        setupCarNavBar()
         baseBinding.tvDisplay.surfaceTextureListener = this
         baseBinding.tvDisplay.doOnLayout {
             requestDisplay("layout")
@@ -149,6 +152,42 @@ class AaMainFragment : BaseFragment<FragmentAaMainBinding>(FragmentAaMainBinding
         car?.disconnect()
         car = Car.createCar(this.requireContext(), carConnectionCallback).apply {
             connect()
+        }
+    }
+
+    private fun setupCarNavBar() {
+        val showNavBar = !AADisplayConfig.HideAaUiControls.get(config)
+        baseBinding.llCarNavBar.visibility = if (showNavBar) View.VISIBLE else View.GONE
+        if (!showNavBar) return
+
+        val navButtons = listOf(baseBinding.btnCarBack, baseBinding.btnCarRecents, baseBinding.btnCarHome)
+        val focusDrawable = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.argb(72, 255, 255, 255))
+            setStroke(3, Color.WHITE)
+        }
+        navButtons.forEachIndexed { index, btn ->
+            btn.nextFocusRightId = baseBinding.tvDisplay.id
+            if (index > 0) btn.nextFocusUpId = navButtons[index - 1].id
+            if (index < navButtons.lastIndex) btn.nextFocusDownId = navButtons[index + 1].id
+            btn.setOnFocusChangeListener { v, hasFocus ->
+                v.background = if (hasFocus) focusDrawable else null
+                val scale = if (hasFocus) 1.15f else 1.0f
+                v.scaleX = scale
+                v.scaleY = scale
+            }
+        }
+        baseBinding.btnCarBack.setOnClickListener {
+            CoreApi.pressKey(KeyEvent.KEYCODE_BACK)
+        }
+        baseBinding.btnCarRecents.setOnClickListener {
+            AaDisplayActivityKt.showRecentTask(parentFragmentManager)
+        }
+        baseBinding.btnCarHome.setOnClickListener {
+            CoreApi.startLauncher()
+        }
+        baseBinding.tvDisplay.post {
+            baseBinding.tvDisplay.requestFocus()
         }
     }
 

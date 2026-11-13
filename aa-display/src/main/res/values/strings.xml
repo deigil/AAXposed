@@ -76,7 +76,7 @@
 
     <string name="pref_ime_policy_title">Keyboard location</string>
     <string name="pref_hide_aa_ui_title">Hide car UI controls</string>
-    <string name="pref_hide_aa_ui_summary">Hides the Coolwalk sidebar and projects full screen; controls move to the floating window on the phone. Turn OFF to get Home / Back / Recents buttons on the car screen instead</string>
+    <string name="pref_hide_aa_ui_summary">Hides the Coolwalk sidebar and projects full screen; controls move to the floating window on the phone. Turn OFF to keep regular Android Auto stock and show Home / Back / Recents inside AAXposed when open</string>
     <string name="pref_force_right_angle_title">Force square corners</string>
     <string name="pref_force_right_angle_summary">Remove rounded-corner clipping on the car picture</string>
     <string name="pref_close_launcher_dashboard_title">Block AA split-screen switching</string>

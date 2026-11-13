@@ -369,16 +369,21 @@ object AaUiHook: AaHook() {
             hookCoolwalk(target)
             return
         }
-        // 仅旧行为需要接管 View 点击监听（侧边栏图标改写点击目标）。
+        // Keep regular Android Auto UI & split-screen intact; AAXposed renders its own
+        // Home/Back/Recents bar inside AaDisplayActivity when open. Only keep AutoOpen
+        // and optional corner-radius overrides active here.
         AaCoolwalkAutoOpenHook.install(env, target)
-        hookBaseClick()
-        if (canHookLayout) {
-            hookLayout()
-        }
-        if (canHookFacetBar) {
-            hookFacetBar(config)
-        }
+        hookLayoutAutoOpenOnly()
         hookRadius(config)
+    }
+
+    private fun hookLayoutAutoOpenOnly() {
+        val ctors = env.layoutInfoConstructors.ifEmpty { listOf(layoutInfoConstructor) }
+        ctors.forEach { ctor ->
+            ctor.hookAfter {
+                AaCoolwalkAutoOpenHook.scheduleAutoOpenIfNeeded(env, "layoutInfo")
+            }
+        }
     }
 
     private fun hookLayout() {

@@ -1,15 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:descendantFocusability="afterDescendants"
     tools:context=".ui.aa.fragment.AaMainFragment">
+
+    <LinearLayout
+        android:id="@+id/llCarNavBar"
+        android:layout_width="52dp"
+        android:layout_height="match_parent"
+        android:background="#E6121212"
+        android:gravity="center_horizontal|bottom"
+        android:orientation="vertical"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <ImageButton
+            android:id="@+id/btnCarBack"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginBottom="12dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="@string/mirror_back"
+            android:focusable="true"
+            android:focusableInTouchMode="false"
+            android:padding="6dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_aa_arrow_back_44" />
+
+        <ImageButton
+            android:id="@+id/btnCarRecents"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginBottom="12dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="@string/mirror_recent_task"
+            android:focusable="true"
+            android:focusableInTouchMode="false"
+            android:padding="6dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_aa_fullscreen_44" />
+
+        <ImageButton
+            android:id="@+id/btnCarHome"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="@string/mirror_home"
+            android:focusable="true"
+            android:focusableInTouchMode="false"
+            android:padding="6dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_aa_home_44" />
+    </LinearLayout>
 
     <TextureView
         android:id="@+id/tvDisplay"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:focusable="true"
+        android:focusableInTouchMode="false"
+        android:nextFocusLeft="@id/btnCarHome"
         android:visibility="visible"
-        tools:visibility="visible"/>
+        tools:visibility="visible" />
 
-</FrameLayout>
+</LinearLayout>
