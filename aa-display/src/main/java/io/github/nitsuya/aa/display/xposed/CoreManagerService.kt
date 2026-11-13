@@ -90,6 +90,7 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
          * nor stay at HU−rail after the strip is gone.
          */
         private fun retryRailAwareSettle() {
+            if (!AADisplayConfig.HideAaUiControls.get(config)) return
             val current = mLockedDisplayProfile ?: return
             val adapter = mAaVirtualDisplayAdapter ?: return
             if (!hasSystemContext) return
@@ -168,6 +169,15 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
             newSession: Boolean
         ): DisplayProfile {
             val reported = sanitizeDisplayProfile(width, height, densityDpi)
+            if (!AADisplayConfig.HideAaUiControls.get(config)) {
+                cancelRailSettleRetry()
+                mLockedDisplayProfile = reported
+                log(
+                    TAG,
+                    "displayProfile direct(show-controls): ${reported.width}*${reported.height},${reported.densityDpi}"
+                )
+                return reported
+            }
             val railW = resolveRailWidthPx()
             val fullW = resolveObservedFullHuWidthPx(reported.width, reported.height)
             val settled = DisplayProfileSettle.settle(
@@ -400,6 +410,7 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
 
     override fun onDestroyDisplay(){
         runMain {
+            mAaVirtualDisplayAdapter?.releaseDefaultHomeToPhoneIfNeeded("onDestroyDisplay")
             val finishDestroy = {
                 try {
                     mAaVirtualDisplayAdapter?.onDestroy()

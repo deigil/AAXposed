@@ -3,6 +3,8 @@ package io.github.nitsuya.aa.display.xposed.hook.aa
 import android.content.ComponentName
 import android.content.Intent
 import android.content.SharedPreferences
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
@@ -69,6 +71,7 @@ object AaUiHook: AaHook() {
     private var resLayoutRightResourceId: Int = 0
 
     private var resLayoutGhFacetBarId: Int = 0
+    private var resLayoutGhFacetBarRhdId: Int = 0
     private var resIdStatusBarId: Int = 0
     private var resIdAssistantIconContainerId: Int = 0
     private var resIdAssistantIconId: Int = 0
@@ -312,16 +315,17 @@ object AaUiHook: AaHook() {
         if (classes.isEmpty() || classes.size > 1) {
             throw NoSuchMethodException("AaUiHook: not found LayoutInfo class：${classes.size}")
         }
-        layoutInfoConstructor = resolveLayoutInfoConstructor(classes[0].name)
+        env.layoutInfoConstructors = env.resolveLayoutInfoConstructors(classes[0].name)
+        layoutInfoConstructor = env.layoutInfoConstructors.first()
 
-        try{
-            startMethod = loadClass("com.google.android.projection.gearhead.service.CarSystemUiControllerService").staticMethod("a", null, argTypes(Intent::class.java))
-        } catch (e: Throwable){
-            log(tagName,  "AaUiHook: not found CarSystemUiControllerService.a static method, using ProjectionContext", e)
+        env.startMethod = env.resolveCarStartActivityMethod()
+        startMethod = env.startMethod
+        if (env.startMethod == null) {
+            resolveProjectionLauncher(bridge, target)
         }
-        resolveProjectionLauncher(bridge, target)
 
         resLayoutGhFacetBarId = InitFields.appContext.resources.getIdentifier("gh_coolwalk_vertical_facet_bar", "layout", InitFields.appContext.packageName)
+        resLayoutGhFacetBarRhdId = InitFields.appContext.resources.getIdentifier("gh_coolwalk_vertical_facet_bar_rhd", "layout", InitFields.appContext.packageName)
         resIdStatusBarId = getIdByName("status_bar")
         resIdAssistantIconContainerId = getIdByName("assistant_icon_container")
         resIdAssistantIconId = getIdByName("assistant_icon")
@@ -366,6 +370,7 @@ object AaUiHook: AaHook() {
             return
         }
         // 仅旧行为需要接管 View 点击监听（侧边栏图标改写点击目标）。
+        AaCoolwalkAutoOpenHook.install(env, target)
         hookBaseClick()
         if (canHookLayout) {
             hookLayout()
@@ -377,43 +382,29 @@ object AaUiHook: AaHook() {
     }
 
     private fun hookLayout() {
-        layoutInfoConstructor.hookAfter { param -> log(tagName, param.thisObject.toString()) }
-        layoutInfoConstructor.hookBefore { param ->
-            if (param.args.size < 5) return@hookBefore
-            val layoutTypeCode = layoutTypeCode(param.args[3] ?: return@hookBefore) ?: return@hookBefore
-            // Skip cluster/auxiliary layouts to avoid overriding non-main surfaces.
-            if (layoutTypeCode in setOf(7, 8, 9)) return@hookBefore
-            val isRightHandDrive = (param.args[4] as? Boolean) == true
-            param.args[0] = if (isRightHandDrive) resLayoutRightResourceId else resLayoutLeftResourceId
-            // Force canonical vertical rail for LHD/RHD.
-            setLayoutTypeArg(param.args, if (isRightHandDrive) 3 else 2)
-            if (param.args.size > 5 && param.args[5] is Boolean) {
-                param.args[5] = true //hasVerticalRail
+        val ctors = env.layoutInfoConstructors.ifEmpty { listOf(layoutInfoConstructor) }
+        ctors.forEach { ctor ->
+            ctor.hookAfter { param ->
+                log(tagName, param.thisObject.toString())
+                AaCoolwalkAutoOpenHook.scheduleAutoOpenIfNeeded(env, "layoutInfo")
+            }
+            ctor.hookBefore { param ->
+                if (param.args.size < 5) return@hookBefore
+                val layoutTypeCode = layoutTypeCode(param.args[3] ?: return@hookBefore) ?: return@hookBefore
+                // Skip cluster/auxiliary layouts to avoid overriding non-main surfaces.
+                if (layoutTypeCode in setOf(7, 8, 9)) return@hookBefore
+                val isRightHandDrive = (param.args[4] as? Boolean) == true
+                param.args[0] = if (isRightHandDrive) resLayoutRightResourceId else resLayoutLeftResourceId
+                // Force canonical vertical rail for LHD/RHD.
+                setLayoutTypeArg(param.args, if (isRightHandDrive) 3 else 2)
+                if (param.args.size > 5 && param.args[5] is Boolean) {
+                    param.args[5] = true //hasVerticalRail
+                }
+                if (param.args.size >= 11 && param.args[6] is Boolean && param.args[7] != null && !param.args[7]!!.javaClass.isPrimitive) {
+                    param.args[6] = false // railOrientationFollowsRailWidget = false
+                }
             }
         }
-    }
-
-    private fun resolveLayoutInfoConstructor(className: String): Constructor<*> {
-        // Keep only stable shape checks so this works across AA 16.4 and 16.6+.
-        val clazz = loadClass(className)
-        val fallback = clazz.declaredConstructors.firstOrNull { ctor ->
-            val p = ctor.parameterTypes
-            p.size >= 10
-                && p[0] == Int::class.javaPrimitiveType
-                && p[1] == Int::class.javaPrimitiveType
-                && p[2] == Int::class.javaPrimitiveType
-                && p[4] == Boolean::class.javaPrimitiveType
-                && p[5] == Boolean::class.javaPrimitiveType
-                && p[7] == Boolean::class.javaPrimitiveType
-                && p[8] == Boolean::class.javaPrimitiveType
-                && p[9] == Boolean::class.javaPrimitiveType
-                && !p[6].isPrimitive
-                && (p[3] == Int::class.javaPrimitiveType || p[3].isEnum)
-        } ?: throw NoSuchMethodException("AaUiHook: not found compatible LayoutInfo constructor for $className")
-
-        fallback.isAccessible = true
-        log(tagName, "AaUiHook: fallback constructor selected, paramCount=${fallback.parameterCount}, layoutTypeArg=${fallback.parameterTypes[3].name}")
-        return fallback
     }
 
     private fun layoutTypeCode(raw: Any): Int? {
@@ -451,7 +442,8 @@ object AaUiHook: AaHook() {
             && parameterTypes[1] == ViewGroup::class.java // root
             && parameterTypes[2] == Boolean::class.javaPrimitiveType // attachToRoot
         }.hookAfter { param ->
-            if (param.args[0] as Int != resLayoutGhFacetBarId) {
+            val inflatedLayoutId = param.args[0] as Int
+            if (inflatedLayoutId != resLayoutGhFacetBarId && (resLayoutGhFacetBarRhdId == 0 || inflatedLayoutId != resLayoutGhFacetBarRhdId)) {
                 return@hookAfter
             }
             val resultViewGroup = param.result as ViewGroup? ?: return@hookAfter //androidx.constraintlayout.widget.ConstraintLayout
@@ -470,6 +462,7 @@ object AaUiHook: AaHook() {
             }
             val aaFacetBar = layoutInflater.inflate(R.layout.aa_facet_bar, resultViewGroupParent, false) as ConstraintLayout
             if(autoOpen){
+                AaCoolwalkAutoOpenHook.scheduleAutoOpenIfNeeded(env, "facet-bar")
                 aaFacetBar.post {
                     runMain {
                         delay(1000)
@@ -481,7 +474,7 @@ object AaUiHook: AaHook() {
                             if (startMethod != null) {
                                 startMethod?.invoke(null, launchIntent)
                             } else {
-                                env.launchAaDisplay()
+                                env.invokeStartCarActivity(launchIntent)
                             }
                         } catch (e: Throwable) {
                             log(tagName, "CarSystemUiControllerService.a start app error", e)
@@ -490,12 +483,24 @@ object AaUiHook: AaHook() {
                 }
             }
             val createBtn: (resId: Int, block: View.() -> Unit) -> Int = { resId, block ->
+                val focusDrawable = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.argb(72, 255, 255, 255))
+                    setStroke(3, Color.WHITE)
+                }
                 val btn = ImageView(ctx).apply {
                     id = View.generateViewId()
                     layoutParams = ConstraintLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                     isFocusable = true
+                    isFocusableInTouchMode = false
                     isClickable = true
                     setImageResource(resId)
+                    setOnFocusChangeListener { v, hasFocus ->
+                        v.background = if (hasFocus) focusDrawable else null
+                        val targetScale = if (hasFocus) 1.15f else 1.0f
+                        v.scaleX = targetScale
+                        v.scaleY = targetScale
+                    }
                 }
                 block(btn)
                 aaFacetBar.addView(btn)
@@ -505,38 +510,37 @@ object AaUiHook: AaHook() {
                 resIdStatusBarId,
                 resIdLauncherAndDashboardIconContainerId
             )
-            val bottomIds = arrayListOf(
-                createBtn(R.drawable.ic_aa_home_44){
-                    val intentClick = Intent().apply {
-                        action = AABroadcastConst.ACTION_SCREEN_CONTROL
-                        putExtra(AABroadcastConst.EXTRA_ACTION, KeyEvent.KEYCODE_HOME)
-                    }
-                    setOnClickListener {
-                        ctx.sendBroadcast(intentClick)
-                    }
-                    setPadding(0, 5, 0, 5)
-                },
-                createBtn(R.drawable.ic_aa_fullscreen_44){
-                    val intentClick = Intent().apply {
-                        action = AABroadcastConst.ACTION_SCREEN_CONTROL
-                        putExtra(AABroadcastConst.EXTRA_ACTION, KeyEvent.KEYCODE_APP_SWITCH)
-                    }
-                    setOnClickListener {
-                        ctx.sendBroadcast(intentClick)
-                    }
-                    setPadding(0, 5, 0, 5)
-                },
-                createBtn(R.drawable.ic_aa_arrow_back_44){
-                    val intentClick = Intent().apply {
-                        action = AABroadcastConst.ACTION_SCREEN_CONTROL
-                        putExtra(AABroadcastConst.EXTRA_ACTION, KeyEvent.KEYCODE_BACK)
-                    }
-                    setOnClickListener {
-                        ctx.sendBroadcast(intentClick)
-                    }
-                    setPadding(0, 5, 0, 5)
-                },
-            )
+            val homeBtnId = createBtn(R.drawable.ic_aa_home_44){
+                val intentClick = Intent().apply {
+                    action = AABroadcastConst.ACTION_SCREEN_CONTROL
+                    putExtra(AABroadcastConst.EXTRA_ACTION, KeyEvent.KEYCODE_HOME)
+                }
+                setOnClickListener {
+                    ctx.sendBroadcast(intentClick)
+                }
+                setPadding(0, 5, 0, 5)
+            }
+            val appSwitchBtnId = createBtn(R.drawable.ic_aa_fullscreen_44){
+                val intentClick = Intent().apply {
+                    action = AABroadcastConst.ACTION_SCREEN_CONTROL
+                    putExtra(AABroadcastConst.EXTRA_ACTION, KeyEvent.KEYCODE_APP_SWITCH)
+                }
+                setOnClickListener {
+                    ctx.sendBroadcast(intentClick)
+                }
+                setPadding(0, 5, 0, 5)
+            }
+            val backBtnId = createBtn(R.drawable.ic_aa_arrow_back_44){
+                val intentClick = Intent().apply {
+                    action = AABroadcastConst.ACTION_SCREEN_CONTROL
+                    putExtra(AABroadcastConst.EXTRA_ACTION, KeyEvent.KEYCODE_BACK)
+                }
+                setOnClickListener {
+                    ctx.sendBroadcast(intentClick)
+                }
+                setPadding(0, 5, 0, 5)
+            }
+            val bottomIds = arrayListOf(homeBtnId, appSwitchBtnId, backBtnId)
             // 恢复 nitsuya 的助手图标接管：点击原生助手图标改为触发自定义语音助手 Shell（小爱）
             val assistantIconView: View? = if (canHookAssistantIcon) resultViewGroup.findViewById(resIdAssistantIconId) else null
             val assistantContainerView: View? = if (canHookAssistantIcon) resultViewGroup.findViewById(resIdAssistantIconContainerId) else null
@@ -580,6 +584,29 @@ object AaUiHook: AaHook() {
                 set.connect(vId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
             }
             set.applyTo(aaFacetBar)
+            val focusOrder = buildList<View> {
+                aaFacetBar.findViewById<View>(resIdLauncherAndDashboardIconId)?.let {
+                    it.isFocusable = true
+                    add(it)
+                }
+                if (assistantIconView != null && bottomIds.contains(resIdAssistantIconContainerId)) {
+                    assistantIconView.isFocusable = true
+                    add(assistantIconView)
+                }
+                aaFacetBar.findViewById<View>(backBtnId)?.let { add(it) }
+                aaFacetBar.findViewById<View>(appSwitchBtnId)?.let { add(it) }
+                aaFacetBar.findViewById<View>(homeBtnId)?.let { add(it) }
+            }
+            focusOrder.forEachIndexed { index, view ->
+                if (index > 0) {
+                    view.nextFocusUpId = focusOrder[index - 1].id
+                }
+                if (index < focusOrder.lastIndex) {
+                    view.nextFocusDownId = focusOrder[index + 1].id
+                }
+            }
+            resultViewGroup.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+            resultViewGroup.isFocusable = false
             resultViewGroup.visibility = View.GONE
             aaFacetBar.addView(resultViewGroup)
             param.result = aaFacetBar

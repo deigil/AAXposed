@@ -67,14 +67,13 @@ class RemoteActivity :
         container.removeAllViews()
 
         val recent = runCatching { CoreApi.getRecentTask() }.getOrNull()
-        val tasks = recent?.tasks.orEmpty()
+        val tasks = recent?.virtualDisplay.orEmpty()
         if (tasks.isEmpty()) {
             baseBinding.tvNoRecentTasks.visibility = View.VISIBLE
             return
         }
         baseBinding.tvNoRecentTasks.visibility = View.GONE
 
-        val pm = packageManager
         val density = resources.displayMetrics.density
         val iconSize = (36 * density).toInt()
 
@@ -89,22 +88,14 @@ class RemoteActivity :
                 layoutParams = LinearLayout.LayoutParams(iconSize, iconSize).apply {
                     marginEnd = (12 * density).toInt()
                 }
-                if (task.icon != null) {
-                    setImageBitmap(task.icon)
-                } else {
-                    val appIcon = runCatching { pm.getApplicationIcon(task.packageName) }.getOrNull()
-                    setImageDrawable(appIcon)
+                if (task.logo != null) {
+                    setImageBitmap(task.logo)
                 }
             }
 
-            val label = runCatching {
-                val ai = pm.getApplicationInfo(task.packageName, 0)
-                pm.getApplicationLabel(ai).toString()
-            }.getOrDefault(task.packageName)
-
             val titleView = TextView(this).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                text = label
+                text = task.label ?: "Task #${task.taskId}"
                 textSize = 15f
             }
 

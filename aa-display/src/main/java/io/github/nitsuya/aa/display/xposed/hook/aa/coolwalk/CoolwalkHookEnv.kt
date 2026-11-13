@@ -135,17 +135,28 @@ class CoolwalkHookEnv {
         val clazz = loadClass(className)
         val matched = clazz.declaredConstructors.filter { ctor ->
             val p = ctor.parameterTypes
-            p.size >= 10 &&
+            val commonHeader = p.size >= 10 &&
                 p[0] == Int::class.javaPrimitiveType &&
                 p[1] == Int::class.javaPrimitiveType &&
                 p[2] == Int::class.javaPrimitiveType &&
+                (p[3] == Int::class.javaPrimitiveType || p[3].isEnum) &&
                 p[4] == Boolean::class.javaPrimitiveType &&
-                p[5] == Boolean::class.javaPrimitiveType &&
+                p[5] == Boolean::class.javaPrimitiveType
+            if (!commonHeader) return@filter false
+
+            val matchesLegacy10 = !p[6].isPrimitive &&
                 p[7] == Boolean::class.javaPrimitiveType &&
                 p[8] == Boolean::class.javaPrimitiveType &&
+                p[9] == Boolean::class.javaPrimitiveType
+
+            val matchesAa181 = p.size >= 11 &&
+                p[6] == Boolean::class.javaPrimitiveType &&
+                !p[7].isPrimitive &&
+                p[8] == Boolean::class.javaPrimitiveType &&
                 p[9] == Boolean::class.javaPrimitiveType &&
-                !p[6].isPrimitive &&
-                (p[3] == Int::class.javaPrimitiveType || p[3].isEnum)
+                p[10] == Boolean::class.javaPrimitiveType
+
+            matchesLegacy10 || matchesAa181
         }
         if (matched.isEmpty()) {
             throw NoSuchMethodException("AaUiHook: not found compatible LayoutInfo constructor for $className")

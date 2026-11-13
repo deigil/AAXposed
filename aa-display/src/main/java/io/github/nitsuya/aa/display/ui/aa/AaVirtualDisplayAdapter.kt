@@ -61,7 +61,9 @@ class AaVirtualDisplayAdapter(
             BuildConfig.APPLICATION_ID,
             "android",
             "com.android.internal.app",
-            "com.android.settings"
+            "com.android.settings",
+            "com.android.launcher3",
+            "com.google.android.apps.nexuslauncher"
         )
     }
 
@@ -273,6 +275,7 @@ class AaVirtualDisplayAdapter(
         mSurfaceControls.values.forEach { it.release() }
         mSurfaceControls.clear()
         tryOrNull { mDisplayWindowManager.removeView(mForceView) }
+        releaseDefaultHomeToPhoneIfNeeded("onDestroy")
         try {
             mVirtualDisplay.release()
             log(TAG, "virtual display released")
@@ -297,6 +300,61 @@ class AaVirtualDisplayAdapter(
         } finally {
             mShellManager = null
             tryOrNull { CoreManagerService.systemContext.unbindService(mServiceConnection) }
+        }
+    }
+
+    fun releaseDefaultHomeToPhoneIfNeeded(reason: String) {
+        if (mDisplayId == Display.INVALID_DISPLAY) return
+        val defaultHome = resolveDefaultHomePackage()?.takeIf { it.isNotBlank() } ?: return
+        if (mLauncherPackage != defaultHome && mHomePackage != defaultHome) return
+
+        val tasksOnVd = tryOrNull {
+            Instances.iActivityTaskManager.getAllRootTaskInfosOnDisplay(mDisplayId)
+        } ?: emptyList()
+        val matchingTasks = tasksOnVd.filter { taskInfo ->
+            val topPkg = taskInfo.topActivity?.packageName
+            val basePkg = runCatching {
+                taskInfo.getObjectAs("baseActivity", ComponentName::class.java) as? ComponentName
+            }.getOrNull()?.packageName
+            val intentPkg = runCatching {
+                taskInfo.getObjectAs("baseIntent", Intent::class.java) as? Intent
+            }.getOrNull()?.component?.packageName
+            topPkg == defaultHome || basePkg == defaultHome || intentPkg == defaultHome
+        }
+
+        if (matchingTasks.isEmpty() && reason != "onDestroyDisplay") {
+            return
+        }
+
+        matchingTasks.forEach { task ->
+            removeTask(task.taskId)
+        }
+        try {
+            Instances.activityManagerHidden.forceStopPackageAsUser(defaultHome, 0)
+            log(TAG, "releaseDefaultHome[$reason]: reset $defaultHome (removed ${matchingTasks.size} vd task(s))")
+        } catch (e: Throwable) {
+            log(TAG, "releaseDefaultHome[$reason]: forceStop $defaultHome failed", e)
+        }
+        try {
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val options = ActivityOptions.makeBasic().apply {
+                launchDisplayId = Display.DEFAULT_DISPLAY
+                invokeMethod("setCallerDisplayId", args(Display.DEFAULT_DISPLAY), argTypes(Integer.TYPE))
+            }.toBundle()
+            val userHandle = UserHandle::class.java.newInstance(
+                args(0),
+                argTypes(Integer.TYPE)
+            )
+            context.invokeMethod(
+                "startActivityAsUser",
+                args(homeIntent, options, userHandle),
+                argTypes(Intent::class.java, Bundle::class.java, UserHandle::class.java)
+            )
+        } catch (e: Throwable) {
+            log(TAG, "releaseDefaultHome[$reason]: restart HOME on default display failed", e)
         }
     }
 
@@ -485,7 +543,7 @@ class AaVirtualDisplayAdapter(
 
     private fun resolveLauncherPackage(configured: String?): String? {
         val requested = configured?.trim()?.takeIf { it.isNotEmpty() }
-        if (requested != null && resolveLaunchComponent(requested) != null) {
+        if (requested != null && !BLOCKED_HOME_PACKAGES.contains(requested) && resolveLaunchComponent(requested) != null) {
             return requested
         }
         if (requested != null) {
@@ -495,6 +553,7 @@ class AaVirtualDisplayAdapter(
         val defaultHome = resolveDefaultHomePackage()
         val homeCandidates = queryHomeLauncherPackages()
         val fallback = homeCandidates.firstOrNull { pkg -> pkg != defaultHome }
+            ?: homeCandidates.firstOrNull()
 
         log(
             TAG,
@@ -772,7 +831,7 @@ class AaVirtualDisplayAdapter(
                             Instances.iActivityTaskManager.getTaskSnapshot(taskInfo.taskId, true)
                         }
                     } catch (e: Throwable){
-                        Instances.iActivityTaskManager.getTaskSnapshot(taskInfo.taskId, true)
+                        tryOrNull { Instances.iActivityTaskManager.getTaskSnapshot(taskInfo.taskId, true) }
                     }?.let { taskSnapshot ->
                         taskSnapshot.hardwareBuffer?.let { buffer ->
                             Bitmap.wrapHardwareBuffer(buffer, taskSnapshot.colorSpace)

@@ -77,13 +77,21 @@ object AndroidAuoHook : BaseHook() {
                 }
                 val measureTimeMillis = measureTimeMillis {
                     hooks.forEach { h ->
-                        h.loadDexClass(bridge, target)
+                        runCatching {
+                            h.loadDexClass(bridge, target)
+                        }.onFailure { e ->
+                            log(tagName, "${h.tagName} loadDexClass failed", e)
+                        }
                     }
                 }
                 log(tagName,"${target.processName} load class measure ${measureTimeMillis}ms")
             }
             hooks.forEach { h ->
-                h.hook(config, target)
+                runCatching {
+                    h.hook(config, target)
+                }.onFailure { e ->
+                    log(tagName, "${h.tagName} hook failed", e)
+                }
             }
         }
     }

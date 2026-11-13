@@ -47,6 +47,7 @@
     <string name="save_settings">Save</string>
     <string name="delay_destroy_time_title">Delayed destroy time</string>
     <string name="delay_destroy_time_invalid">Select a valid delayed destroy time</string>
+    <string name="delay_0_seconds">0 seconds (Immediate)</string>
     <string name="delay_60_seconds">60 seconds</string>
     <string name="delay_120_seconds">120 seconds</string>
     <string name="delay_180_seconds">180 seconds</string>

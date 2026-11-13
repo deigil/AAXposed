@@ -76,6 +76,9 @@ object AaCoolwalkLayoutHook {
         if (args[5] is Boolean) {
             args[5] = true
         }
+        if (args.size >= 11 && args[6] is Boolean && args[7] != null && !args[7]!!.javaClass.isPrimitive) {
+            args[6] = false // railOrientationFollowsRailWidget = false
+        }
         widenLayoutInfoToFullHu(env, args)
 
         if (beforeRail != true ||

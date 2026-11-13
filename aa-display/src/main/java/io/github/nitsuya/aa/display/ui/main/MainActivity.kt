@@ -326,6 +326,7 @@ class MainActivity :
 
     private fun bindDelayDropdown() {
         delayOptions = listOf(
+            DelayOption(0, getString(R.string.delay_0_seconds)),
             DelayOption(60, getString(R.string.delay_60_seconds)),
             DelayOption(120, getString(R.string.delay_120_seconds)),
             DelayOption(180, getString(R.string.delay_180_seconds))
@@ -392,15 +393,18 @@ class MainActivity :
     private fun isLauncherCandidateAllowed(pkg: String, cls: String): Boolean {
         if (pkg.isBlank()) return false
         if (
+            pkg == BuildConfig.APPLICATION_ID ||
             pkg == "android" ||
             pkg == "com.android.internal.app" ||
             pkg == "com.android.settings" ||
+            pkg == "com.android.launcher3" ||
+            pkg == "com.google.android.apps.nexuslauncher" ||
             cls.contains("FallbackHome", ignoreCase = true) ||
             cls.contains("ResolverActivity", ignoreCase = true)
         ) {
             return false
         }
-        return true
+        return packageManager.getLaunchIntentForPackage(pkg) != null
     }
 
     private fun queryLauncherPackagesViaShell(): List<String> {
@@ -473,13 +477,6 @@ class MainActivity :
             return false
         }
 
-        if (launcherOptions.size <= 1) {
-            baseBinding.tilLauncherPackage.error = getString(R.string.single_launcher_warning)
-            hideValidationMessage()
-            clearLaunchPackageValidState()
-            return false
-        }
-
         if (selectedPackage.isNullOrBlank()) {
             baseBinding.tilLauncherPackage.error = getString(R.string.default_launch_package_empty)
             hideValidationMessage()
@@ -488,6 +485,12 @@ class MainActivity :
         }
 
         if (selectedPackage == defaultHomePackage) {
+            if (launcherOptions.size == 1) {
+                baseBinding.tilLauncherPackage.error = null
+                clearLaunchPackageValidState()
+                showValidationMessage(getString(R.string.single_launcher_warning), false)
+                return true
+            }
             val errorText = getString(R.string.package_same_error)
             baseBinding.tilLauncherPackage.error = errorText
             hideValidationMessage()

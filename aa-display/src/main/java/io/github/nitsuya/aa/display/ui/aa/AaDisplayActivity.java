@@ -70,15 +70,18 @@ public class AaDisplayActivity extends CarActivity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent keyEvent) {
         switch (keyCode){
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
-                AaDisplayActivityKt.INSTANCE.pressKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE);
-                return true;
+            case KeyEvent.KEYCODE_NUMPAD_ENTER:
             case KeyEvent.KEYCODE_BACK:
+            case KeyEvent.KEYCODE_ESCAPE:
                 AaDisplayActivityKt.INSTANCE.pressKey(keyCode);
                 return true;
             default:
-                AaDisplayActivityKt.INSTANCE.toast("Keycode: [" + keyCode + "] not mapped");
                 return super.onKeyDown(keyCode, keyEvent);
         }
     }
