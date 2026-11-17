@@ -44,11 +44,11 @@ class AaVirtualDisplayAdapter(
         const val TAG = "AADisplay_AaVirtualDisplayAdapter"
         private const val WINDOWING_MODE_PINNED = 2
 
-        /** 输入法渲染在投屏 VD 自己身上。 */
+        /** IME renders on the projection VirtualDisplay itself. */
         private const val DISPLAY_IME_POLICY_LOCAL = 0
-        /** 输入法交给 fallback display，即 default display / 手机主屏。 */
+        /** IME falls back to the default display / phone main screen. */
         private const val DISPLAY_IME_POLICY_FALLBACK_DISPLAY = 1
-        /** 该屏不显示输入法。 */
+        /** Do not show IME on this display. */
         private const val DISPLAY_IME_POLICY_HIDE = 2
 
         /** Package names to ignore in recent task list */
@@ -164,9 +164,9 @@ class AaVirtualDisplayAdapter(
 
         try {
             Instances.iWindowManager.apply {
-                // 与 nitsuya 上游一致：按配置下发，不再强制 LOCAL。
-                // 默认 FALLBACK_DISPLAY(1)，虚拟屏唤起的输入法落到手机主屏，
-                // 车机那块 1280x720 横屏不再被键盘挡住半屏。
+                // Consistent with upstream nitsuya: apply per config instead of forcing LOCAL.
+                // Default FALLBACK_DISPLAY(1) routes IME invoked on virtual display to phone main screen,
+                // so the 1280x720 landscape head unit is no longer half-covered by the keyboard.
                 val imePolicy = AADisplayConfig.DisplayImePolicy.get(config).let {
                     if (it in DISPLAY_IME_POLICY_LOCAL..DISPLAY_IME_POLICY_HIDE) it
                     else DISPLAY_IME_POLICY_FALLBACK_DISPLAY
@@ -437,8 +437,8 @@ class AaVirtualDisplayAdapter(
     }
 
     /**
-     * @param withSnapshot 是否连带取任务快照。手机端镜像小窗只显示图标，
-     *   传 false 可以省掉每个任务一次 getTaskSnapshot IPC 和 HardwareBuffer 包装。
+     * @param withSnapshot Whether to also fetch task snapshots. Phone mirror window only shows icons;
+     *   passing false avoids one getTaskSnapshot IPC and HardwareBuffer wrapper per task.
      */
     fun getRecentTask(withSnapshot: Boolean = true): RecentTask {
         return try{
@@ -531,7 +531,7 @@ class AaVirtualDisplayAdapter(
     }
 
     private fun refreshLauncherPackage(reason: String) {
-        // 现代 API 的远端配置是实时的；旧框架下由 HookPreferences.latest() 负责 reload。
+        // Modern API remote config is real-time; under legacy framework HookPreferences.latest() handles reload.
         val configured = AADisplayConfig.LauncherPackage.get(HookPreferences.latest() ?: config)
         val resolved = resolveLauncherPackage(configured)
         if (mLauncherPackage != resolved) {

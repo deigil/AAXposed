@@ -98,7 +98,7 @@ class AaMainFragment : BaseFragment<FragmentAaMainBinding>(FragmentAaMainBinding
                     }
                 }
                 AABroadcastConst.ACTION_COOLWALK_FULL_BLEED -> {
-                    // 车机侧边栏空间已回收，按整块车机宽度重新申请投屏画布。
+                    // Head unit sidebar space has been reclaimed; re-request projection canvas using full head unit width.
                     baseBinding.tvDisplay.post {
                         requestDisplay("full-bleed")
                     }

@@ -7,18 +7,18 @@ import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
 
 /**
- * 模块 App 侧的配置写入镜像。
+ * Config write mirror on the module app side.
  *
- * 现代 Xposed API 下 hook 进程读的是**框架守护进程里的远端配置**
- * （SQLite，见 [io.github.libxposed.service.RemotePreferences]），
- * 而不是模块自己 `shared_prefs` 目录里的 xml。UI（[io.github.nitsuya.aa.display.ui.setting.SettingsActivity]
- * 的 `PreferenceFragmentCompat`、MainActivity 的开关等）仍然写本地
- * SharedPreferences —— 那是 preference 库唯一能接的存储 —— 所以这里挂一个监听器，
- * 把本地的每次改动同步到远端。
+ * Under the modern Xposed API, hooked processes read **remote config in the framework daemon**
+ * (SQLite, see [io.github.libxposed.service.RemotePreferences]), rather than the xml in the module's
+ * own `shared_prefs` directory. UI ([io.github.nitsuya.aa.display.ui.setting.SettingsActivity]'s
+ * `PreferenceFragmentCompat`, MainActivity toggles, etc.) still writes to local SharedPreferences —
+ * the only storage the preference library supports — so we attach a listener here to sync every
+ * local change to remote.
  *
- * 旧框架（不支持 api 101 的 LSPosed）走 [XposedInit][io.github.nitsuya.aa.display.xposed.XposedInit]
- * + `XSharedPreferences`，读的就是那份本地 xml，因此本地存储不能去掉，
- * [SharedPreferencesAccess] 放宽权限的逻辑也要保留。两条路径共用同一份本地数据。
+ * Legacy frameworks (LSPosed without api 101 support) use [XposedInit][io.github.nitsuya.aa.display.xposed.XposedInit]
+ * + `XSharedPreferences`, which reads that local xml directly; therefore local storage cannot be
+ * removed and [SharedPreferencesAccess]'s permission-relaxing logic must be kept. Both paths share the same local data.
  */
 object RemoteConfigMirror {
 
@@ -27,16 +27,16 @@ object RemoteConfigMirror {
     @Volatile
     private var installed = false
 
-    /** 本地存储。强引用：[SharedPreferences] 的监听器注册表是弱引用的。 */
+    /** Local storage. Strong reference: [SharedPreferences] listener registry is weak. */
     private var local: SharedPreferences? = null
 
-    /** 远端配置，绑定到框架服务后才有值。 */
+    /** Remote config, populated once bound to the framework service. */
     @Volatile
     private var remote: SharedPreferences? = null
 
     /**
-     * [XposedServiceHelper.registerListener] 只保留一个监听器，且 helper 自己
-     * 用弱引用持有回调链，这里必须是常驻对象字段。
+     * [XposedServiceHelper.registerListener] keeps only one listener and holds the callback chain
+     * weakly, so this must be a long-lived object field.
      */
     private val serviceListener = object : XposedServiceHelper.OnServiceListener {
         override fun onServiceBind(service: XposedService) {
@@ -59,8 +59,8 @@ object RemoteConfigMirror {
     }
 
     /**
-     * 在 [io.github.nitsuya.aa.display.Application.onCreate] 里调用。
-     * 每个 App 进程各自安装一次；框架未激活时监听器不会回调，无副作用。
+     * Called in [io.github.nitsuya.aa.display.Application.onCreate].
+     * Installed once per app process; no-op when the framework is inactive.
      */
     @Synchronized
     fun install(context: Context) {
@@ -75,7 +75,7 @@ object RemoteConfigMirror {
             .onFailure { Log.w(TAG, "registerListener failed", it) }
     }
 
-    /** 本地 → 远端全量同步。绑定成功时跑一次，把历史配置补齐。 */
+    /** Full local -> remote sync. Runs once on bind to backfill existing config. */
     private fun syncAll() {
         val source = local ?: return
         val target = remote ?: return

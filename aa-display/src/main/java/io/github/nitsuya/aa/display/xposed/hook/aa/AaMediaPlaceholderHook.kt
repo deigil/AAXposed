@@ -24,23 +24,23 @@ import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 
 /**
- * Coolwalk 空媒体卡就是 **Dashboard** presentation（800×480 车机上约 304×460），
- * 显示“无法获取媒体内容”。
+ * The Coolwalk empty media card is the **Dashboard** presentation (~304x460 on an 800x480 head unit),
+ * displaying "Media unavailable".
  *
- * name=Dashboard 的 VD starve 在 [AaCoolwalkCompositorHook] / [CoolwalkCompositorPolicy]
- * （create / Builder / resize）里。这里只做两件事：
+ * Starving the `name=Dashboard` VD is handled in [AaCoolwalkCompositorHook] / [CoolwalkCompositorPolicy]
+ * (create / Builder / resize). This hook only does two things:
  *
- * 1. 保持 [MEDIA_CAR_APP] **启用**，让 AA Now Playing 元数据仍能输出到车机；
- * 2. 隐藏残留的 Dashboard Presentation 窗口，并在 `content_bounds` 扩宽之后
- *    吞掉 Coolwalk 自己的 Dashboard 覆盖断言。
+ * 1. Keep [MEDIA_CAR_APP] **enabled** so AA Now Playing metadata can still be sent to the head unit;
+ * 2. Hide leftover Dashboard Presentation windows and swallow Coolwalk's own Dashboard coverage
+ *    assertions after `content_bounds` is widened.
  *
- * 第 2 点是隐藏 UI 控件栈（[AaUiHook.hideAaUiControls]）的必需伴生守卫：
- * 内容窗口被扩到整块车机宽度后，兄弟 Dashboard 窗口仍保留原右侧几何，
- * AA 在 `:car` 里断言 `does not mostly cover or provide a hint for one side of`
- * 并抛 [IllegalStateException] 杀掉 `:car`，`:projection` 随后因死 binder 一并崩溃
- * （连接 DHU 时表现为 Android Auto 闪退）。
+ * Item 2 is a required companion guard for hiding the UI control stack ([AaUiHook.hideAaUiControls]):
+ * after the content window is widened to the full head unit width, the sibling Dashboard window
+ * retains its original right-side geometry, so AA in `:car` asserts
+ * `does not mostly cover or provide a hint for one side of` and throws [IllegalStateException],
+ * killing `:car` and crashing `:projection` via dead binder (Android Auto crashes on DHU connect).
  *
- * 绝不隐藏 [io.github.nitsuya.aa.display.ui.aa.AaDisplayActivity] 的投屏窗口。
+ * Never hides [io.github.nitsuya.aa.display.ui.aa.AaDisplayActivity]'s projection window.
  */
 object AaMediaPlaceholderHook : AaHook() {
     override val tagName: String = "AAD_AaMediaPlaceholderHook"
@@ -50,7 +50,7 @@ object AaMediaPlaceholderHook : AaHook() {
 
     private var insetAssertMethods: List<Method> = emptyList()
 
-    /** 与 [AaUiHook] 同一个开关：只有隐藏 UI 控件栈开启时才需要这个守卫。 */
+    /** Same toggle as [AaUiHook]: this guard is only needed when hiding UI controls is enabled. */
     private var hideAaUiControls: Boolean = true
 
     override fun isSupportProcess(processName: String): Boolean {
@@ -94,7 +94,7 @@ object AaMediaPlaceholderHook : AaHook() {
     }
 
     /**
-     * 车机媒体宿主需要保持可用。旧版本曾禁用该组件，导致 Now Playing 完全断流。
+     * Head unit media host must stay enabled. Older versions disabled it, breaking Now Playing completely.
      */
     private fun ensureMediaCarAppEnabled() {
         runCatching {
@@ -119,7 +119,7 @@ object AaMediaPlaceholderHook : AaHook() {
         }
     }
 
-    /** 原始 inset 逻辑照常执行；只吞掉 Dashboard 覆盖断言的 [IllegalStateException]。 */
+    /** Original inset logic runs as usual; only swallow [IllegalStateException] for Dashboard cover assertion. */
     private fun suppressDashboardCoverAssert() {
         if (insetAssertMethods.isEmpty()) {
             log(tagName, "no Coolwalk inset-assert methods; cover crash not guarded")
@@ -188,7 +188,7 @@ object AaMediaPlaceholderHook : AaHook() {
     private fun isDashboardWindow(lp: WindowManager.LayoutParams?, root: View): Boolean {
         val title = lp?.title?.toString().orEmpty()
         if (title.contains("Dashboard", ignoreCase = true)) return true
-        // 歌词/媒体浏览残留窗口 —— 绝不命中 AaDisplayActivity 投屏。
+        // Leftover lyric/media-browse windows — never match AaDisplayActivity projection.
         if (!title.contains("AaDisplayActivity", ignoreCase = true) &&
             !title.contains("AaMainFragment", ignoreCase = true)
         ) {

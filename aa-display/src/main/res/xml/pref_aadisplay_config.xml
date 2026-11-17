@@ -2,14 +2,14 @@
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <!-- ============ 投屏显示 ============ -->
+    <!-- ============ Projection Display ============ -->
     <PreferenceCategory
         app:key="CategoryDisplay"
         app:title="@string/pref_category_display"
         app:iconSpaceReserved="false">
 
-        <!-- 见 AaVirtualDisplayAdapter.onConnected / AADisplayConfig.DisplayImePolicy。
-             IntConfig 内部按 String 读写，所以 entryValues 用字符串。 -->
+        <!-- See AaVirtualDisplayAdapter.onConnected / AADisplayConfig.DisplayImePolicy.
+             IntConfig reads/writes as String internally, so entryValues use strings. -->
         <ListPreference
             app:key="DisplayImePolicy"
             app:defaultValue="1"
@@ -40,7 +40,7 @@
             app:summary="@string/pref_close_launcher_dashboard_summary"
             app:iconSpaceReserved="false" />
 
-        <!-- entries/entryValues 由 SettingsActivity 运行时填充（预设 + 自定义） -->
+        <!-- entries/entryValues populated at runtime by SettingsActivity (presets + custom) -->
         <ListPreference
             app:key="VirtualDisplayDpi"
             app:title="@string/pref_virtual_display_dpi_title"
@@ -55,9 +55,9 @@
 
     </PreferenceCategory>
 
-    <!-- ============ 应用投屏 ============ -->
-    <!-- 这两项不是纯配置：改动时要用 root 去 pm enable/disable 组件，
-         由 SettingsFragment 的 OnPreferenceChangeListener 落实，失败就不写入。 -->
+    <!-- ============ App Projection ============ -->
+    <!-- These two toggle component state via root pm enable/disable in SettingsFragment's
+         OnPreferenceChangeListener; on failure the preference is not written. -->
     <PreferenceCategory
         app:key="CategoryAppProjection"
         app:title="@string/pref_category_app_projection"
@@ -79,13 +79,13 @@
 
     </PreferenceCategory>
 
-    <!-- ============ 兼容性修复 ============ -->
+    <!-- ============ Compatibility Fixes ============ -->
     <PreferenceCategory
         app:key="CategoryFix"
         app:title="@string/pref_category_fix"
         app:iconSpaceReserved="false">
 
-        <!-- 见 EyeCareSuspender -->
+        <!-- See EyeCareSuspender -->
         <rikka.material.preference.MaterialSwitchPreference
             app:key="SuspendEyeCareOnProjection"
             app:defaultValue="true"
@@ -93,7 +93,7 @@
             app:summary="@string/pref_suspend_eye_care_summary"
             app:iconSpaceReserved="false" />
 
-        <!-- 见 AndroidHook.AppFullscreenOnProjection -->
+        <!-- See AndroidHook.AppFullscreenOnProjection -->
         <rikka.material.preference.MaterialSwitchPreference
             app:key="ForceAppFullscreenOnProjection"
             app:defaultValue="true"
@@ -101,7 +101,7 @@
             app:summary="@string/pref_force_app_fullscreen_summary"
             app:iconSpaceReserved="false" />
 
-        <!-- 见 GboardImeHook -->
+        <!-- See GboardImeHook -->
         <rikka.material.preference.MaterialSwitchPreference
             app:key="FixGboardFloatingIme"
             app:defaultValue="true"
@@ -111,13 +111,13 @@
 
     </PreferenceCategory>
 
-    <!-- ============ 交互 ============ -->
+    <!-- ============ Interaction ============ -->
     <PreferenceCategory
         app:key="CategoryInteract"
         app:title="@string/pref_category_interact"
         app:iconSpaceReserved="false">
 
-        <!-- 选项由 SettingsActivity 扫描手机上的语音助手后填充，最后一项为自定义命令 -->
+        <!-- Options populated by SettingsActivity after scanning installed voice assistants; last entry is custom command -->
         <ListPreference
             app:singleLineTitle="true"
             app:key="VoiceAssistShell"
@@ -134,7 +134,7 @@
 
     </PreferenceCategory>
 
-    <!-- ============ Shell 命令（nitsuya 分支的启动/退出脚本）============ -->
+    <!-- ============ Shell Commands ============ -->
     <PreferenceCategory
         app:key="CategoryShell"
         app:title="@string/pref_category_shell"
@@ -158,7 +158,7 @@
 
     </PreferenceCategory>
 
-    <!-- ============ Android Auto 属性覆盖 ============ -->
+    <!-- ============ Android Auto Property Overrides ============ -->
     <PreferenceCategory
         app:key="CategoryAndroidAuto"
         app:title="@string/pref_category_aa"

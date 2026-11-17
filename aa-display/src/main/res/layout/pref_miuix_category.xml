@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  miuix 风格的分组标题：在卡片外侧、灰色小字。
-  tag 供 MiuixCardDecoration 识别“这一行不是卡片内容”。
+  miuix-style category header: outside the card, small gray text.
+  The tag lets MiuixCardDecoration identify that this row is not card content.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"

@@ -40,8 +40,8 @@
             android:name="xposeddescription"
             android:value="@string/xposeddescription" />
         <!--
-            Legacy 通道声明 API 82，避免 LSPosed 2.3.0 将模块识别为依赖已废弃的
-            New XSharedPreferences。现代通道由 META-INF/xposed/module.prop 管理。
+            Legacy channel declares API 82 to prevent LSPosed 2.3.0 from identifying the module
+            as relying on the deprecated New XSharedPreferences. Modern channel is managed by META-INF/xposed/module.prop.
         -->
         <meta-data
             android:name="xposedminversion"

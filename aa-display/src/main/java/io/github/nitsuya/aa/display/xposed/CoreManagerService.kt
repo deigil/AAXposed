@@ -46,8 +46,8 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
             }
 
         /**
-         * system_server 侧的模块配置。来源由入口类注入（现代 API 走远端配置，
-         * 旧框架走 XSharedPreferences），这里只负责取。
+         * Module config on the system_server side. Source is injected by the entry class
+         * (remote config for modern API, XSharedPreferences for legacy); this only reads it.
          */
         val config: SharedPreferences? get() = HookPreferences.get()
 
@@ -254,8 +254,9 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
         }
 
         /**
-         * MIUI 护眼矩阵是全局的（display 0 → SF 广播全屏），投屏期间抑制、断开后还原。
-         * 软重连会重复进 [onCreateDisplay]，[EyeCareSuspender.suspend] 自身幂等。
+         * MIUI eye-care matrix is global (display 0 -> SurfaceFlinger broadcasts to all displays),
+         * so suppress during projection and restore on disconnect. Soft reconnects re-enter
+         * [onCreateDisplay]; [EyeCareSuspender.suspend] is idempotent.
          */
         private fun suspendEyeCareForProjection() {
             if (!hasSystemContext) return
@@ -281,9 +282,9 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
         }
 
         /**
-         * 投屏状态位，供普通应用进程里的 hook 读取
-         * （[io.github.nitsuya.aa.display.xposed.hook.GboardImeHook]）。
-         * 与护眼抑制同一对生命周期点，软重连重复调用保持幂等。
+         * Projection state flag for hooks in regular app processes
+         * ([io.github.nitsuya.aa.display.xposed.hook.GboardImeHook]).
+         * Shares the same lifecycle pair as eye-care suppression; idempotent across soft reconnects.
          */
         private fun markProjectionState(active: Boolean) {
             if (!hasSystemContext) return
@@ -297,20 +298,21 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
             TipUtil.init(systemContext, "[AADisplay] ")
             Instances.init(systemContext)
 
-            // 提前把 EzXHelper 的 modulePath 解析好。悬浮窗（CommonContextWrapper）要用它，
-            // 而那条路径跑在 system_server 主 looper 上、只在插车时才走到 —— 放到这里做，
-            // 失败会在开机日志里直接暴露，而不是等到投屏那一刻。
+            // Pre-resolve EzXHelper's modulePath. The floating window (CommonContextWrapper) needs it,
+            // and that path runs on system_server's main looper only when connecting to the car —
+            // doing it here surfaces failures in boot logs instead of waiting until projection starts.
             log(TAG, "module assets ready: ${ModuleAssets.ensureModulePath()}")
 
-            // 上一次开机挂起后未能还原（进程被杀 / 直接重启）时，screen_paper_mode_enabled 会带着
-            // 我们置的值持久化下来使护眼一直失效，这里兜底回滚。
+            // If a previous boot's suspend was not restored (process killed / sudden reboot),
+            // screen_paper_mode_enabled would stay persisted with our value and disable eye-care;
+            // roll it back here as a fallback.
             EyeCareSuspender.recoverStaleSuspend(systemContext).also { r ->
                 if (r !is EyeCareSuspender.Result.NotActive) {
                     log(TAG, "eyeCare stale recover: $r")
                 }
             }
 
-            // 同理清掉可能残留的投屏状态位，避免第三方进程一直按“投屏中”行事。
+            // Similarly clear any leftover projection state flag so third-party processes don't stay in projection mode.
             markProjectionState(false)
         }
 
@@ -389,10 +391,10 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
                         profile.densityDpi
                     )
                 } catch (t: Throwable) {
-                    // 这里跑在 system_server 主 looper 上（runMain + Dispatchers.Main），
-                    // 且 GlobalScope 没有 CoroutineExceptionHandler：异常逃出去会走到线程的
-                    // 默认处理器，直接把 system_server 打死 → 整机软重启（je#system_server）。
-                    // 投屏画面本身由 VirtualDisplay 承载，悬浮窗建失败也不该拖垮系统。
+                    // This runs on system_server's main looper (runMain + Dispatchers.Main),
+                    // and GlobalScope has no CoroutineExceptionHandler: an uncaught exception
+                    // reaches the thread's default handler and crashes system_server (soft reboot).
+                    // Projection itself is hosted by VirtualDisplay; floating window failure shouldn't crash the system.
                     log(TAG, "onCreateDisplay failed after virtual display setup", t)
                 } finally {
                     mDisplayCreateInProgress = false

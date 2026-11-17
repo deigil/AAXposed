@@ -30,7 +30,7 @@ object CoreManager : ICoreManager, DeathRecipient {
     @Volatile
     private var service: ICoreManager? = null
 
-    /** 取 binder 失败后的退避窗口，单位 ms —— 只影响失败重试频率，不改变成功路径。 */
+    /** Backoff window in ms after failing to fetch binder — only affects retry rate, not the success path. */
     private const val SERVICE_MISS_BACKOFF_MS = 500L
 
     @Volatile
@@ -237,10 +237,10 @@ object CoreManager : ICoreManager, DeathRecipient {
 
     private fun getService(): ICoreManager? {
         if (service != null) return service
-        // 取不到时的退避：AADisplay 自己的进程一次就成功并缓存，只有 gearhead 会一直失败
-        // （BridgeService 的 uid 闸门），而 Coolwalk 几何钩子每构造一次 bounds 就问两遍
-        // 协调器，等于每次都往 PMS 打一发 transact —— 连车时能刷出几十条
-        // `Someone else trying to get my binder?`，白烧 CPU 还拖慢 system_server。
+        // Backoff on miss: AADisplay's own process succeeds once and caches it; only gearhead
+        // fails repeatedly (BridgeService's uid gate), while Coolwalk geometry hooks query the
+        // coordinator twice per bounds construction — causing dozens of PMS transact calls and
+        // `Someone else trying to get my binder?` log spam, wasting CPU and slowing system_server.
         val now = SystemClock.uptimeMillis()
         val lastMiss = serviceMissUptimeMs
         if (lastMiss != 0L && now - lastMiss in 0 until SERVICE_MISS_BACKOFF_MS) return null

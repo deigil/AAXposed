@@ -13,60 +13,59 @@ import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 把 gearhead 自己协商出来的车机画布尺寸喂给 [CoolwalkRailCoordinator]。
+ * Feeds gearhead's own negotiated head-unit canvas dimensions into [CoolwalkRailCoordinator].
  *
- * **为什么非要有这一步。** `:car` 进程里根本看不到车机原始宽度：
- * - HU 尺寸的 `LayoutDisplay`（DHU 上 1280×720）只在 `:projection` 里存活 15ms 就销毁，
- *   `:car` 里没有任何 HU 尺寸的 VirtualDisplay，所以
- *   [CoolwalkRailCoordinator.observeLiveVirtualDeviceHuSize] 在这里永远空手而归；
- * - gearhead → system_server 的 binder 被 [io.github.nitsuya.aa.display.xposed.BridgeService]
- *   的 uid 闸门拒掉（日志里成串的 `Someone else trying to get my binder?`），
- *   而 `CoolwalkRailStore` 的 Settings.Global 镜像只有 system_server 写得进去，
- *   system_server 自己也只知道内容槽宽度 → `:projection` 观测到的真宽度传不到 `:car`。
+ * **Why this step is required.** The `:car` process never sees the raw head-unit width:
+ * - The HU-sized `LayoutDisplay` (1280x720 on DHU) only lives for 15ms in `:projection` before
+ *   being destroyed; `:car` has no HU-sized VirtualDisplay, so
+ *   [CoolwalkRailCoordinator.observeLiveVirtualDeviceHuSize] always comes up empty there;
+ * - gearhead -> system_server binder calls are rejected by [io.github.nitsuya.aa.display.xposed.BridgeService]'s
+ *   uid gate (`Someone else trying to get my binder?` in logs), and only system_server can write
+ *   `CoolwalkRailStore`'s Settings.Global mirror, while system_server itself only knows the content-slot
+ *   width -> the true width observed in `:projection` never reaches `:car`.
  *
- * 于是 `:car` 唯一能看到的就是「HU − 侧边栏」的内容槽（DHU 实测 1200），
- * `bestObservedFullHuWidthPx()` 退化成 0，[CoolwalkProjectionBoundsHook] 只能
- * `coerceAtLeast(trX)` → `rightGap=0` → 不扩宽，[CoolwalkDrawingSpecWiden] 和
- * `DisplayProfileSettle` 同样在 1200/1200 上空转，GhostActivityDisplay 按内容槽建出来
- * （`layerStackRect: Rect(0, 0 - 1200, 720)`）→ 高德等投屏应用右侧缺一条黑边，
- * 而 gearhead 自绘的 Coolwalk 桌面和手机端预览都正常。
+ * Consequently `:car` only sees the "HU - sidebar" content slot (1200 on DHU),
+ * `bestObservedFullHuWidthPx()` degenerates to 0, [CoolwalkProjectionBoundsHook] falls back to
+ * `coerceAtLeast(trX)` -> `rightGap=0` -> no widening, and [CoolwalkDrawingSpecWiden] /
+ * `DisplayProfileSettle` spin on 1200/1200, creating GhostActivityDisplay at content-slot width
+ * (`layerStackRect: Rect(0, 0 - 1200, 720)`) -> AMap and other projected apps get a black bar on
+ * the right while gearhead's own Coolwalk launcher and phone preview look normal.
  *
- * **数据从哪来。** `:car` 手里其实有真值，只是没人读：
+ * **Where the data comes from.** `:car` actually has the true value, just unread:
  * `CAR.WM.LOADING.MAN: Show for STARTUP, screen dimens DisplayParams(selectedIndex=0,
- * codecWidth=1280, …, dispWidth=1280, dispHeight=720, dpi=160, scaledDimensions=1280x720, …)`。
- * 混淆会改类名/字段名，但**不改字符串常量**，所以这里按 `toString()` 取值
- * （[AaDpiHook][io.github.nitsuya.aa.display.xposed.hook.aa.AaDpiHook] 用的是同一个
- * `DisplayParams(selectedIndex=` 特征），并且不写死任何分辨率——实测车机有
- * 800×533@170、715×633@170、DHU 1280×720@160 等多种，判据只能来自运行时。
+ * codecWidth=1280, ..., dispWidth=1280, dispHeight=720, dpi=160, scaledDimensions=1280x720, ...)`.
+ * Obfuscation renames classes/fields but **never string constants**, so we parse `toString()`
+ * (same `DisplayParams(selectedIndex=` marker as [AaDpiHook][io.github.nitsuya.aa.display.xposed.hook.aa.AaDpiHook])
+ * without hardcoding any resolution — real head units vary (800x533@170, 715x633@170, DHU 1280x720@160).
  *
- * 时序也够：DisplayParams 在 42.164 打出，[CoolwalkProjectionBoundsHook] 42.175 才第一次
- * 判定，Ghost display 42.183 才建，所以这里喂进去的宽度赶在所有消费者之前。
+ * Timing is also sufficient: DisplayParams is logged at 42.164, [CoolwalkProjectionBoundsHook] first
+ * evaluates at 42.175, and Ghost display is created at 42.183, so this feeds the width before all consumers.
  */
 object CoolwalkHuScreenParamsHook {
 
-    /** `DisplayParams.toString()` 前缀，与 `AaDpiHook` 保持一致。 */
+    /** `DisplayParams.toString()` prefix, matching `AaDpiHook`. */
     private const val PARAMS_MARKER = "DisplayParams(selectedIndex="
 
-    /** 类名兜底特征：只有 DisplayParams 会同时带这个字段名。 */
+    /** Fallback class marker: only DisplayParams has this field name. */
     private const val SCALED_MARKER = "scaledDimensions="
 
-    /** 自校验特征：任何被当成 DisplayParams 的对象，`toString()` 里必须有它。 */
+    /** Self-validation marker: any object treated as DisplayParams must contain this in `toString()`. */
     private const val DISP_MARKER = "dispWidth="
 
-    /** 打印上面那条日志的方法——它拿到的必然是**选中**的那组参数。 */
+    /** Method logging the line above — guaranteed to receive the **selected** parameter set. */
     private const val SHOW_MARKER = "screen dimens"
 
-    /** 只做数量级消毒，不是分辨率白名单（715/800/1280 都在带内）。 */
+    /** Sanity bounds only, not a resolution whitelist (715/800/1280 all fit). */
     private const val MIN_HU_PX = 200
     private const val MAX_HU_PX = 8192
 
-    /** DexKit 命中过多时的上限，避免给一堆同名类都挂钩子。 */
+    /** Cap on DexKit hits to avoid hooking a pile of similarly named classes. */
     private const val MAX_CANDIDATES = 4
 
     /**
-     * `toString()` 被 R8 优化掉时的兜底：直接读构造器实参。
-     * 索引来自 `AaDpiHook` 已经校验过的同一个构造器签名
-     * （它就是靠 `args[8]` 改 dpi 的），与 toString 的字段顺序一一对应。
+     * Fallback when `toString()` is stripped by R8: read constructor args directly.
+     * Indices come from the same constructor signature verified by `AaDpiHook`
+     * (which modifies dpi via `args[8]`), matching `toString()` field order 1:1.
      */
     private const val ARG_DISP_W = 4
     private const val ARG_DISP_H = 5
@@ -85,11 +84,11 @@ object CoolwalkHuScreenParamsHook {
     @Volatile
     private var paramsClasses: List<Class<*>> = emptyList()
 
-    /** 消费者方法把 DisplayParams 存字段时的缓存（形参里找不到的情况）。 */
+    /** Cache when consumer stores DisplayParams in a field (not passed via formal parameters). */
     @Volatile
     private var cachedHolderField: Field? = null
 
-    /** 已喂给协调器的尺寸，用来给重复上报去重。 */
+    /** Dimensions already fed to the coordinator, used to deduplicate repeated reports. */
     @Volatile
     private var acceptedWidth = 0
 
@@ -97,8 +96,9 @@ object CoolwalkHuScreenParamsHook {
     private var acceptedHeight = 0
 
     /**
-     * 构造器观测到的所有不同尺寸。>1 说明车机广告了多组分辨率、构造顺序不代表选中项，
-     * 这时候宁可退回今天的行为，也不能靠 grow-only 挑一个最大的乱扩。
+     * All distinct sizes observed by constructors. >1 means the head unit advertises multiple
+     * resolutions and construction order doesn't reflect the selected one; better to fall back
+     * than let grow-only pick the largest blindly.
      */
     private val observedSizes = ConcurrentHashMap.newKeySet<String>()
 
@@ -155,9 +155,9 @@ object CoolwalkHuScreenParamsHook {
                 log(CoolwalkHookEnv.TAG, "AaUiHook: hook screen-dimens ${method.name} failed", e)
             }
         }
-        // 消费者方法拿到的必然是选中项，是首选来源；构造器同时也喂，
-        // 但只在「至今只见过一种尺寸」时——车机广告多组分辨率时构造顺序不可信，
-        // 而 rememberFullHuSize 是 grow-only，挑错就等于挑了最大的那个。
+        // Consumer method is guaranteed to receive the selected item and is the primary source;
+        // constructor also feeds, but only when only one size has been seen so far (when a head unit
+        // advertises multiple resolutions, ctor order is unreliable and rememberFullHuSize is grow-only).
         var ctors = 0
         for (clazz in paramsClasses) {
             for (ctor in clazz.declaredConstructors) {
@@ -171,7 +171,7 @@ object CoolwalkHuScreenParamsHook {
             }
         }
         if (shows == 0 && ctors == 0) {
-            log(CoolwalkHookEnv.TAG, "AaUiHook: HU screen params unavailable — 只能沿用内容槽宽度")
+            log(CoolwalkHookEnv.TAG, "AaUiHook: HU screen params unavailable — falling back to content slot width")
             return
         }
         log(
@@ -185,7 +185,7 @@ object CoolwalkHuScreenParamsHook {
             ?: textIfDisplayParams(holder)
             ?: holderFieldText(holder)
         if (text == null) {
-            logDebug(CoolwalkHookEnv.TAG, "AaUiHook: ${method.name} 未携带 DisplayParams")
+            logDebug(CoolwalkHookEnv.TAG, "AaUiHook: ${method.name} did not carry DisplayParams")
             return
         }
         accept("show:${method.name}", parse(text))
@@ -197,11 +197,11 @@ object CoolwalkHuScreenParamsHook {
         if (hu == null) return
         val firstSeen = observedSizes.add("${hu.width}x${hu.height}")
         if (observedSizes.size > 1) {
-            // 多组候选分辨率：构造顺序不代表选中项，交给消费者方法定夺。
+            // Multiple candidate resolutions: construction order does not indicate selection; let consumer method decide.
             if (firstSeen) {
                 log(
                     CoolwalkHookEnv.TAG,
-                    "AaUiHook: HU 候选 ${hu.width}x${hu.height} 不采信（已见 $observedSizes）" +
+                    "AaUiHook: HU candidate ${hu.width}x${hu.height} ignored (seen $observedSizes)" +
                         " [ctor:${clazz.simpleName}]",
                 )
             }
@@ -221,8 +221,8 @@ object CoolwalkHuScreenParamsHook {
                 "disp=${hu.dispW}x${hu.dispH} [$source]",
         )
         if (hu.width <= hu.height) {
-            // rememberFullHuSize 只收横屏画布，会静默丢弃这组；打出来省得下次重新查。
-            log(CoolwalkHookEnv.TAG, "AaUiHook: HU 非横屏，rememberFullHuSize 丢弃 [$source]")
+            // rememberFullHuSize only accepts landscape canvases and silently drops this; log it to save debugging time.
+            log(CoolwalkHookEnv.TAG, "AaUiHook: HU non-landscape, dropped by rememberFullHuSize [$source]")
             return
         }
         CoolwalkRailCoordinator.rememberFullHuSize(hu.width, hu.height)
@@ -232,7 +232,7 @@ object CoolwalkHuScreenParamsHook {
         )
     }
 
-    /** 自校验：类可能被认错，但 `dispWidth=` 认不错。 */
+    /** Self-validation: class might be misidentified, but `dispWidth=` won't be. */
     private fun textIfDisplayParams(value: Any?): String? {
         if (value == null) return null
         val classes = paramsClasses
@@ -241,7 +241,7 @@ object CoolwalkHuScreenParamsHook {
         return text.takeIf { it.contains(DISP_MARKER) }
     }
 
-    /** 消费者方法从字段里读 DisplayParams（而不是走形参）的情况。 */
+    /** Case where consumer method reads DisplayParams from a field rather than a parameter. */
     private fun holderFieldText(holder: Any?): String? {
         if (holder == null || paramsClasses.isEmpty()) return null
         cachedHolderField?.let { field ->
@@ -273,7 +273,7 @@ object CoolwalkHuScreenParamsHook {
         )
     }
 
-    /** `toString()` 被优化掉时读构造器实参，索引见 [ARG_DISP_W]。 */
+    /** Fallback when `toString()` is stripped: read constructor args, indices see [ARG_DISP_W]. */
     private fun parseArgs(args: Array<Any?>?): HuScreen? {
         if (args == null || args.size <= ARG_SCALED) return null
         val dispW = args[ARG_DISP_W] as? Int ?: return null
@@ -288,7 +288,7 @@ object CoolwalkHuScreenParamsHook {
         )
     }
 
-    /** scaledDimensions 才是 gearhead 实际排版用的尺寸（像素非方形时与 disp* 不同）。 */
+    /** scaledDimensions is what gearhead actually uses for layout (differs from disp* with non-square pixels). */
     private fun build(scaledW: Int, scaledH: Int, dispW: Int, dispH: Int, dpi: Int): HuScreen? {
         val useScaled = inHuRange(scaledW) && inHuRange(scaledH)
         val width = if (useScaled) scaledW else dispW

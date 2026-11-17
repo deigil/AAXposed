@@ -60,18 +60,18 @@ class DisplayWindow(
     private var mControllerDockRight = true
     private val mControllerPeekPx by lazy { (mContext.resources.displayMetrics.density * 14f).toInt() }
 
-    /** 控制器根布局为卡片阴影让出的透明边，贴边坐标要按它回退（见 applyControllerDockPosition） */
+    /** Transparent padding reserved on controller root for card shadow; dock coords subtract it (see applyControllerDockPosition) */
     private val mControllerShadowPadPx by lazy {
         mContext.resources.getDimensionPixelSize(R.dimen.window_shadow_pad)
     }
 
     /**
-     * 镜像小窗的几何状态（MIUI 小窗逻辑：整体可拖动、可等比缩放）。
+     * Geometry state of the mirror floating window (MIUI freeform: draggable and proportionally resizable).
      *
-     * mMirrorFitRatio 是“恰好铺满手机可用区”的缩放，mMirrorScale 是用户在这个基准上
-     * 的比例（拖右下角把手改它），两者相乘才是 mDisplayRatio。触摸转发要除以
-     * mDisplayRatio 把坐标换回车机分辨率，所以缩放必须只走 updateDipslaySize()
-     * 这一条路径，否则画面和点击位置会错开。
+     * mMirrorFitRatio is the scale that just fits the usable phone area, while mMirrorScale is the
+     * user's multiplier on top (adjusted via the bottom-right handle); their product is mDisplayRatio.
+     * Touch forwarding divides by mDisplayRatio to map coordinates back to head unit resolution, so
+     * resizing must only go through updateDipslaySize(), otherwise image and touch targets will desync.
      */
     private var mMirrorFitRatio = 1f
     private var mMirrorScale = 1f
@@ -89,14 +89,14 @@ class DisplayWindow(
     private val mMirrorMinWidthPx by lazy {
         mContext.resources.getDimensionPixelSize(R.dimen.mirror_min_width)
     }
-    /** 多任务面板：单个图标条目的参考宽度 / RecyclerView 的 padding，用来算网格列数 */
+    /** Recents panel: reference width of a single icon item / RecyclerView padding for grid column calculation */
     private val mMirrorRecentItemWidthPx by lazy {
         mContext.resources.getDimensionPixelSize(R.dimen.mirror_recent_item_width).coerceAtLeast(1)
     }
     private val mMirrorRecentPaddingPx by lazy {
         (mContext.resources.displayMetrics.density * 4f).toInt()
     }
-    /** 顶栏 + 底部导航条占掉的高度，算可用空间时要从屏幕高度里扣掉 */
+    /** Height occupied by top bar + bottom nav bar, subtracted from screen height when computing usable space */
     private val mMirrorChromeHeightPx by lazy {
         mContext.resources.let {
             it.getDimensionPixelSize(R.dimen.mirror_top_bar_height) +
@@ -106,13 +106,13 @@ class DisplayWindow(
     }
 
     /**
-     * 悬浮窗必须落在手机主屏（display 0）上。
+     * Floating window must attach to the phone main screen (display 0).
      *
-     * mContext 最终来自 AMS 的 mUiContext，构造 DisplayWindow 的时机正好卡在
-     * gearhead 换屏之后，它可能还绑在刚被移除的虚拟屏上，直接 addView 会抛
-     * InvalidDisplayException（"Attempted to add window to a display that does
-     * not exist"），首次 showController 就被 tryOrNull 吞掉。这里显式绑定默认屏，
-     * 顺带让 currentWindowMetrics 也取到手机主屏的尺寸。
+     * mContext originates from AMS's mUiContext; when DisplayWindow is constructed right after
+     * gearhead switches displays, it may still be bound to a just-removed virtual display, causing
+     * addView to throw InvalidDisplayException ("Attempted to add window to a display that does
+     * not exist") and be swallowed by tryOrNull on the first showController. Explicitly bind to
+     * DEFAULT_DISPLAY here so currentWindowMetrics also reads the phone main screen's dimensions.
      */
     private val mWindowManager: WindowManager by lazy {
         val windowContext = tryOrNull {
@@ -239,8 +239,8 @@ class DisplayWindow(
         runCatching {
             with(ContextThemeWrapper(mContext, R.style.Theme_AADisplay_Window)){
                 mControllerBinding = WindowControllerBinding.inflate(LayoutInflater.from(this))
-                // 小窗版镜像窗不再铺满全屏，多任务面板直接叠在车机画面上，
-                // 不需要再为状态栏留出 padding
+                // Freeform mirror window is no longer full-screen and overlays recents on top of the
+                // head unit image, so no status bar padding is needed.
                 mMirrorBinding = WindowMirrorBinding.inflate(LayoutInflater.from(this))
             }
         }.onFailure {
@@ -283,7 +283,7 @@ class DisplayWindow(
             }
         }
         mMirrorBinding?.apply {
-            // 顶栏 / 底部导航条空白处拖动 = 移动整个小窗
+            // Dragging top bar / empty space on bottom nav bar moves the entire floating window
             arrayOf(llMirrorTopBar, rlMirrorNav).forEach {
                 it.setOnTouchListener { _, event -> onMirrorDragTouch(event) }
             }
@@ -421,8 +421,8 @@ class DisplayWindow(
             ,
             PixelFormat.TRANSLUCENT
         ).apply {
-            // 小窗：尺寸跟着内容走，位置由 x/y 决定（gravity 必须是 START|TOP，
-            // 否则 x/y 的含义会变成相对其它边的偏移，拖动逻辑就对不上了）
+            // Freeform window: size follows content, position is driven by x/y (gravity must be START|TOP,
+            // otherwise x/y become offsets from other edges and drag logic breaks)
             gravity = Gravity.START or Gravity.TOP
             screenOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
@@ -434,8 +434,8 @@ class DisplayWindow(
             ibMirrorDisplay.visibility = View.VISIBLE
         }
         val bounds = mWindowManager.currentWindowMetrics.bounds
-        // “恰好铺满手机可用区”的基准比例：宽度扣掉阴影 padding，高度还要再扣掉
-        // 顶栏和底部导航条，否则 100% 时小窗会比屏幕高
+        // Base ratio that fits the usable phone area: width subtracts shadow padding, height also
+        // subtracts top bar and bottom nav bar so 100% scale doesn't exceed the screen height
         val availableWidth = (bounds.width() - mMirrorShadowPadPx * 2).coerceAtLeast(1)
         val availableHeight =
             (bounds.height() - mMirrorShadowPadPx * 2 - mMirrorChromeHeightPx).coerceAtLeast(1)
@@ -444,7 +444,7 @@ class DisplayWindow(
         mMirrorScale = mMirrorScale.coerceIn(minMirrorScale(), 1f)
         mDisplayRatio = mMirrorFitRatio * mMirrorScale
         mMirrorBinding?.apply {
-            // buffer 保持车机原生分辨率，view 尺寸只做缩放，改大小是纯 GPU 拉伸
+            // Keep buffer at native head unit resolution; only scale view bounds (pure GPU stretch)
             svMirror.holder.setFixedSize(mDisplayWidth, mDisplayHeight)
             svMirror.updateLayoutParams{
                 width = (mDisplayWidth * mDisplayRatio).toInt()
@@ -458,12 +458,12 @@ class DisplayWindow(
     }
 
     /**
-     * 多任务面板跟着 sv_mirror 的实际尺寸走。
+     * Recents panel follows sv_mirror's actual dimensions.
      *
-     * 面板不能用 match_parent：小窗是 wrap_content，FrameLayout 在测量阶段会先按
-     * AT_MOST 量一次面板，图标网格的高度就会把卡片撑得比车机画面还高，面板溢出
-     * 卡片边界（看起来就是“错位”）。这里显式写死成和车机画面等大，并按可用宽度
-     * 换算网格列数，缩放后依然贴合。
+     * Cannot use match_parent: the floating window is wrap_content, so FrameLayout measures
+     * the panel with AT_MOST first, stretching the card taller than the head unit screen and
+     * overflowing card bounds. Explicitly match the head unit image size and compute grid columns
+     * from available width so it stays aligned after scaling.
      */
     private fun updateRecentTaskPanelSize() {
         val binding = mMirrorBinding ?: return
@@ -473,7 +473,7 @@ class DisplayWindow(
             this.width = width
             this.height = height
         }
-        // 左右两栏各占一半，减去 padding 后按参考条目宽度算列数
+        // Left and right columns each take half; subtract padding and divide by reference item width for column count
         val columnWidth = (width / 2 - mMirrorRecentPaddingPx * 2).coerceAtLeast(1)
         val spanCount = (columnWidth / mMirrorRecentItemWidthPx).coerceIn(1, 4)
         arrayOf(binding.rvRecentTaskLeft, binding.rvRecentTaskRight).forEach { rv ->
@@ -482,7 +482,7 @@ class DisplayWindow(
         }
     }
 
-    /** 缩到 @dimen/mirror_min_width 就不再往下走，免得小窗小到点不着 */
+    /** Stop shrinking below @dimen/mirror_min_width so the window stays tappable */
     private fun minMirrorScale(): Float {
         val fullWidth = mDisplayWidth * mMirrorFitRatio
         if (fullWidth <= 0f) return 1f
@@ -490,10 +490,10 @@ class DisplayWindow(
     }
 
     /**
-     * 顶栏 / 底部导航条上的拖动：整窗平移。
+     * Dragging on top bar / bottom nav bar: translates the entire window.
      *
-     * 这里直接吃掉事件（返回 true），因为拖动区本身没有点击行为；按钮各自有
-     * OnClickListener，不会走到这里。
+     * Consumes the event (returns true) because the drag area has no click action;
+     * buttons have their own OnClickListeners and won't hit this path.
      */
     private fun onMirrorDragTouch(event: MotionEvent): Boolean {
         when (event.action) {
@@ -515,15 +515,14 @@ class DisplayWindow(
     }
 
     /**
-     * 右下角把手拖动：等比缩放。
+     * Bottom-right handle drag: proportional resize.
      *
-     * 以按下点为基准，用对角位移量换算成新的 mMirrorScale，再回到
-     * updateDipslaySize() 统一改 mDisplayRatio —— 触摸转发也读这个字段，
-     * 所以画面和点击位置始终一致。
+     * Uses diagonal displacement from touch-down to compute new mMirrorScale and calls
+     * updateDipslaySize() to update mDisplayRatio — touch forwarding reads the same field,
+     * keeping image and tap coordinates in sync.
      *
-     * 没进入拖动前把事件交回 View（返回 false），长按恢复默认大小才有机会触发；
-     * 一旦开始拖动就补一个 ACTION_CANCEL 掐掉 View 排队中的长按，避免拖着拖着
-     * 突然弹出“已恢复默认大小”。
+     * Passes events back to View (returns false) before drag starts so long-press reset can trigger;
+     * once dragging begins, injects ACTION_CANCEL to cancel queued long-press detection.
      */
     private fun onMirrorResizeTouch(v: View, event: MotionEvent): Boolean {
         when (event.action) {
@@ -536,7 +535,7 @@ class DisplayWindow(
             MotionEvent.ACTION_MOVE -> {
                 val fullWidth = mDisplayWidth * mMirrorFitRatio
                 if (fullWidth <= 0f) return mResizing
-                // 右下方向为放大：把 dx、dy 投影到对角线上，避免斜拖时手感突变
+                // Bottom-right enlarges: project dx, dy onto diagonal to avoid feel jumps on angled drags
                 val dx = event.rawX - mResizeStartRawX
                 val dy = event.rawY - mResizeStartRawY
                 if (!mResizing) {
@@ -566,7 +565,7 @@ class DisplayWindow(
         return if (mResizing) true else v.onTouchEvent(event)
     }
 
-    /** 把小窗收回屏幕内；比屏幕大时允许负偏移，这样超出的部分还能拖着看 */
+    /** Clamp floating window within screen bounds; allow negative offset if larger than screen so overflow can be panned */
     private fun clampMirrorPosition() {
         val binding = mMirrorBinding ?: return
         if (!mMirrorStatus) return
@@ -581,14 +580,14 @@ class DisplayWindow(
         tryOrNull { mWindowManager.updateViewLayout(binding.root, mMirrorLayoutParams) }
     }
 
-    /** 长按缩放把手：回到 100% 并重新居中 */
+    /** Long-press resize handle: reset to 100% and re-center */
     private fun resetMirrorSizeAndPosition() {
         mMirrorScale = 1f
         updateDipslaySize()
         mMirrorBinding?.root?.post { centerMirror() }
     }
 
-    /** 首次显示（以及恢复默认）时把小窗放到屏幕中间 */
+    /** Center floating window on screen on first show (and on reset) */
     private fun centerMirror() {
         val binding = mMirrorBinding ?: return
         val bounds = mWindowManager.currentWindowMetrics.bounds
@@ -710,7 +709,7 @@ class DisplayWindow(
         mMirrorBinding?.apply {
             tryOrNull { mWindowManager.addView(root, mMirrorLayoutParams) }
             mMirrorStatus = true
-            // 第一次弹出时居中；之后保留用户上次拖到的位置，只做越界回收
+            // Center on first show; afterwards keep user's last dragged position and only clamp out-of-bounds
             root.post {
                 if (mMirrorPositioned) clampMirrorPosition() else centerMirror()
             }
@@ -733,7 +732,7 @@ class DisplayWindow(
             llRecentTask.visibility = View.VISIBLE
             updateRecentTaskPanelSize()
             runIO {
-                // 小窗只显示图标，不取快照
+                // Mirror window shows icons only, skip snapshots
                 displayAdapter.getRecentTask(withSnapshot = false).also {recentTask ->
                     runMain {
                         (rvRecentTaskLeft.adapter as DisplayRecyclerViewAdapter)?.setItems(recentTask.virtualDisplay)
@@ -782,9 +781,9 @@ class DisplayWindow(
         val visibleHeight = getControllerVisibleHeight(binding)
         if (visibleWidth <= 0 || visibleHeight <= 0) return
 
-        // 根布局给卡片阴影留了一圈透明 padding，卡片左上角相对窗口原点偏移了一个 pad，
-        // 而 x/y 定位的是窗口。四种贴边情况算出来的都是「卡片该在哪」，所以统一减掉
-        // 一个 pad；否则卡片会离屏幕边缘差一个 pad，收起时露出的宽度也少一个 pad。
+        // Root layout reserves transparent padding for card shadow, offsetting the card top-left from
+        // the window origin by one pad while x/y position the window itself. All four dock cases compute
+        // where the card belongs, so subtract one pad uniformly; otherwise the card sits one pad off the edge.
         val pad = mControllerShadowPadPx
         val dockX = if (mControllerCollapsed) {
             if (mControllerDockRight) {

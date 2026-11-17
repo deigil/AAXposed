@@ -2,8 +2,7 @@
 
 ## Unreleased (deigil/AAXposed)
 
-Personal fork for Pixel 9 + Mercedes E53 (MBUX). Older entries below are inherited from upstream
-and are in Chinese.
+Personal fork for Pixel 9 + Mercedes E53 (MBUX).
 
 ### Added
 - English translation of the whole UI (`values-en`).
@@ -23,142 +22,136 @@ and are in Chinese.
 
 ## v0.24#17.2-e2 (2026-09-02)
 
-基线：`4a9746b`（tag `v0.24.0`，`0.24#17.2-e1` / `3012`）。详见 [docs/releases/v0.24-17.2-e2.md](docs/releases/v0.24-17.2-e2.md)。
+Baseline: `4a9746b` (tag `v0.24.0`, `0.24#17.2-e1` / `3012`). See [docs/releases/v0.24-17.2-e2.md](docs/releases/v0.24-17.2-e2.md) for details.
 
 ### Added
-- 迁移到 libxposed 现代 Xposed API：新入口 `ModernInit`（`META-INF/xposed/java_init.list`），
-  配置改读框架守护进程里的远端配置，不再依赖 others 可读的 `aadisplay_config.xml`
-  （LSPosed 2.2.0 起废弃、2.3.0 计划移除）。`XposedInit` 保留为旧框架兜底，两条路径共存。
-  `module.prop` 的 `targetApiVersion` 停在 101，否则框架会屏蔽 EzXHelper 依赖的
-  `de.robv.android.xposed.*`。
-- `HookPreferences`：hook 侧唯一的配置入口，来源由入口类注入（现代=远端配置，
-  legacy=`XSharedPreferences`+`reload()`），解析结果缓存，取不到时回落默认值。
-- `RemoteConfigMirror`：把 UI 侧写入的本地 `SharedPreferences` 同步到远端配置
-  （绑定时全量补齐，之后逐 key 推送）。
-- `HookTarget`：与框架无关的「被 hook 目标」描述，替换各 hook 签名里的
-  `LoadPackageParam`（现代 API 的两个回调都不给进程名，legacy 的 param 又造不出来）。
-- `ModuleAssets`：补齐 EzXHelper 的 `modulePath` / `moduleRes`（现代 API 没有
-  `StartupParam`），懒解析 + `PathClassLoader` 兜底，失败只记日志不抛。
-- `CoolwalkComposeConstraintsGuard`：Compose 约束断言守卫，见 Fixed 第一条。
-- 新增配置项 `ForceAppFullscreenOnProjection`（默认 `true`）。
+- Migrated to libxposed modern Xposed API: new entry `ModernInit` (`META-INF/xposed/java_init.list`),
+  reading remote config from the framework daemon instead of world-readable `aadisplay_config.xml`
+  (deprecated in LSPosed 2.2.0, planned for removal in 2.3.0). `XposedInit` is kept as fallback for
+  legacy frameworks. `module.prop` `targetApiVersion` stays at 101 so the framework does not block
+  `de.robv.android.xposed.*` required by EzXHelper.
+- `HookPreferences`: single config entry point on the hook side; source is injected by entry class
+  (modern = remote config, legacy = `XSharedPreferences` + `reload()`), resolved once and cached,
+  falling back to defaults when unavailable.
+- `RemoteConfigMirror`: syncs local `SharedPreferences` written by UI to remote config
+  (full backfill on bind, then per-key push).
+- `HookTarget`: framework-agnostic target description replacing `LoadPackageParam` in hook signatures
+  (neither modern API callback provides processName, and legacy param cannot be instantiated).
+- `ModuleAssets`: populates EzXHelper `modulePath` / `moduleRes` (modern API has no `StartupParam`),
+  with lazy resolution + `PathClassLoader` fallback, logging without throwing on failure.
+- `CoolwalkComposeConstraintsGuard`: Compose constraints assertion guard (see Fixed).
+- Added config option `ForceAppFullscreenOnProjection` (default `true`).
 
 ### Changed
-- 版本号更新为：
+- Version bumped:
   - `versionName`: `0.24#17.2-e2`
   - `versionCode`: `3016`
-- `packaging` 不再整块排除 `META-INF/**`，改为逐项排除依赖元数据，
-  保住 libxposed 要求的 `META-INF/xposed/**`。
-- `AndroidManifest.xml` 补上 `android:name=".Application"`：此前该类从未注册，
-  `onCreate` 不会执行，`makeReadableForHooks` / `DynamicColors` / 全局 `App` 实际都没生效过。
-- 模块自身不再作为作用域分发：`xposed_scope` 删掉 `io.github.nitsuya.aa.display`，
-  `XposedInit` 对应分支改为 `null`。
-- `CoreManagerService.config` 改为委托 `HookPreferences`；`AaVirtualDisplayAdapter` 的
-  config 形参类型放宽到 `SharedPreferences?`。
-- `AndroidAuoHook` 用 `target.appInfo?.sourceDir` 并对 null 跳过（原先会 NPE）。
-- 删除 `AaDisplayProcessHook` / `AaDisplayPresentationResize` 与
-  `CoolwalkDrawingSpecWiden` 的模块进程侧改写路径：模块自身进程无法被 hook，
-  投屏尺寸由 system_server 侧 `DisplayProfileSettle` 裁定。
-- 删除 content_bounds 的无键改写路径（进程级 `Rect(int,int,int,int)` / `Rect.set` hook）：
-  gearhead 自己分配的 `Rect(80, 0, 1280, 720)` 与 rail 内缩后的 content_bounds 形状完全一致，
-  无法靠收紧判定区分，撑到 1280 就与只有 1200 的协商画布矛盾。改写现在只走带键路径
-  （config Bundle / `Bundle.putParcelable` / `Intent.putExtra` / `ArrayMap.put`），
-  且 content_bounds 只平移到原点、不再撑大：`CoolwalkRailMath.expandedBoundsWithin`
-  以传入矩形的宽度为上限，画布本身仍由 `CoolwalkDrawingSpecWiden` 负责放大。
+- `packaging` no longer excludes `META-INF/**` wholesale; excludes dependency metadata individually
+  to preserve `META-INF/xposed/**` required by libxposed.
+- Added `android:name=".Application"` to `AndroidManifest.xml`: previously unregistered, so `onCreate`
+  never ran and `makeReadableForHooks` / `DynamicColors` / global `App` had never taken effect.
+- Module no longer dispatches to its own process: removed `io.github.nitsuya.aa.display` from
+  `xposed_scope` and changed the corresponding branch in `XposedInit` to `null`.
+- `CoreManagerService.config` now delegates to `HookPreferences`; `AaVirtualDisplayAdapter` config
+  parameter relaxed to `SharedPreferences?`.
+- `AndroidAuoHook` uses `target.appInfo?.sourceDir` and skips null (previously NPE).
+- Removed `AaDisplayProcessHook` / `AaDisplayPresentationResize` and the module-process rewrite path in
+  `CoolwalkDrawingSpecWiden`: the module's own process cannot be hooked; projection dimensions are
+  adjudicated by `DisplayProfileSettle` in `system_server`.
+- Removed unkeyed `content_bounds` rewrite path (process-wide `Rect(int,int,int,int)` / `Rect.set` hooks):
+  gearhead's own `Rect(80, 0, 1280, 720)` matched rail-reclaimed content_bounds identically and could
+  not be distinguished, expanding to 1280 against a 1200 canvas. Rewrites now only use keyed paths
+  (config Bundle / `Bundle.putParcelable` / `Intent.putExtra` / `ArrayMap.put`), and `content_bounds`
+  only translates to origin without expanding: `CoolwalkRailMath.expandedBoundsWithin` caps at incoming
+  rect width while `CoolwalkDrawingSpecWiden` widens the canvas itself.
 
 ### Fixed
-- 修复开启「隐藏车机 UI 控件」后 `gearhead:projection` 闪退（连 DHU / 连车即断）：
-  该开关把 GhFacetBar VD 饿到 1×720、Dashboard VD 饿到 1×1 并把残留窗口宽度写 0，
-  而 17.x 的车机 UI 是 Compose —— 分栏容器测量时拿「主轴可用量 − 第一组已用量」当第二组预算，
-  容器只剩 0/1 px 时差值为负，撞上 `Constraints(minW, maxW, minH, maxH)` 里
-  `max >= min && min >= 0` 的硬断言，在 `AndroidComposeView.dispatchDraw` 的延迟测量里抛
-  `IllegalArgumentException: maxWidth must be >= than minWidth` 打死进程。
-  现在 hook 那两个校验入口（17.3 有两个，一个直接比较后抛、一个先与出布尔再抛），
-  参数合法立即原样放行，只把本来必定抛异常的四元组夹回合法值：负的 max 收到 0，
-  min 再夹进 max 以内，等价于「这一轴没有可用空间」。不吞异常、不改任何有效约束的语义。
-- 修复竖屏应用在车机横屏上被 fixed-orientation letterbox 压成居中窄条：
-  hook `ActivityRecord.getOverrideOrientation()`（12/13 回退 `getOrientation(int)`），
-  把投屏屏上 activity 的固定朝向改成 `SCREEN_ORIENTATION_UNSPECIFIED`。
-  实测 `setIgnoreOrientationRequest` 与 `OVERRIDE_ANY_ORIENTATION` 对虚拟屏均无效。
-- 修复投屏时整机软重启（`je#system_server`）两处成因：`CommonContextWrapper` 构造时
-  `InitFields.modulePath` 未初始化抛 `UninitializedPropertyAccessException`；
-  `onCreateDisplay` 建悬浮窗的异常从 `GlobalScope` 逃到线程默认处理器。
-- `WazeHook` / `GboardImeHook` 不再各自持有 `XSharedPreferences`。
+- Fixed `gearhead:projection` crashing on DHU / car connect when "Hide head unit UI controls" is enabled:
+  that toggle starves GhFacetBar VD to 1x720, Dashboard VD to 1x1, and zeroes leftover window widths;
+  on Compose-based 17.x head unit UI, split-pane containers compute the second group's budget as
+  `available - firstGroupUsed`, producing negative max when only 0/1 px remains and tripping
+  `IllegalArgumentException: maxWidth must be >= than minWidth` in `AndroidComposeView.dispatchDraw`.
+  Hooked both validation entry points (17.3 has two), passing valid args straight through and
+  clamping only failing tuples (negative max -> 0, min clamped to max), equivalent to 0 available space.
+- Fixed portrait apps being squeezed into a centered narrow strip by fixed-orientation letterboxing on
+  the landscape head unit: hooked `ActivityRecord.getOverrideOrientation()` (12/13 fallback
+  `getOrientation(int)`) to return `SCREEN_ORIENTATION_UNSPECIFIED` on the projection display.
+  `setIgnoreOrientationRequest` and `OVERRIDE_ANY_ORIENTATION` had no effect on virtual displays.
+- Fixed two causes of system soft reboot (`je#system_server`) during projection: `InitFields.modulePath`
+  uninitialized throwing `UninitializedPropertyAccessException` in `CommonContextWrapper`, and
+  floating window creation exceptions in `onCreateDisplay` escaping `GlobalScope`.
+- `WazeHook` / `GboardImeHook` no longer hold their own `XSharedPreferences`.
 
 ### Verification
-- 构建通过：`:aa-display:assembleRelease`；装机确认 `versionCode=3016`。
-- 环境：HyperOS `3.0.307.6`（Android 16）+ Android Auto `17.3.662854` + LSPosed，车机端为 DHU。
-- APK 内 `META-INF/xposed/{java_init.list,module.prop,scope.list}` 与 `assets/xposed_init` 均在；
-  `system` 与 gearhead 两侧现代入口均加载，`ModuleAssets` 解析出 modulePath，
-  `RemoteConfigMirror` 绑定框架服务并同步 16 个 key。
-- 重启后连 DHU 跑完整段会话（`HideAaUiControls` 开）：logcat 无 `maxWidth must be`、
-  无 `FATAL EXCEPTION`，DHU 侧无 `Failed to read from transport`，
-  `:projection` 及另外四个 gearhead 进程全程同 pid 存活。
-  守卫只命中一次：`repair Constraints w[1..1]→[1..1] h[0..-5]→[0..0]`，
-  附带的调用栈落在分栏容器测量 → `Constraints.copy` → `dispatchDraw` 这条预期路径上。
-- 画布（未加 `CoolwalkHuScreenParamsHook` 的那一轮）：
-  `displayProfile locked: 1200*720,160 (reported=1200 rail=0 full=1200)`、
-  `content_bounds=Rect(0, 0 - 1200, 720)`、`pillar_width=0`、rail 宽度回收为 0。
-- 投屏屏上的应用（车机启动器 / 高德）`mBounds=Rect(0, 0 - 1200, 720)`、`letterBoxed=false`。
-- 右侧黑边：补上 `CoolwalkHuScreenParamsHook` 后重跑 DHU，`:car` 侧读到车机全宽 1280，
-  `CoolwalkProjectionBoundsHook` / `CoolwalkDrawingSpecWiden` 把内容槽 1200 撑回 1280，
-  日志确认窗口右边界不再短一条 rail；肉眼二次确认未做。
-- 连续两次重启无 `system_server` 软重启。
+- Build passed: `:aa-display:assembleRelease`; verified `versionCode=3016` on device.
+- Environment: HyperOS `3.0.307.6` (Android 16) + Android Auto `17.3.662854` + LSPosed + DHU.
+- Verified `META-INF/xposed/{java_init.list,module.prop,scope.list}` and `assets/xposed_init` in APK;
+  modern entry loaded in both `system` and gearhead, `ModuleAssets` resolved modulePath, and
+  `RemoteConfigMirror` bound the framework service and synced 16 keys.
+- Ran full DHU session after reboot (`HideAaUiControls` on): no `maxWidth must be` or `FATAL EXCEPTION`
+  in logcat, no `Failed to read from transport` on DHU, `:projection` and all other four gearhead
+  processes stayed alive with unchanged PIDs. Guard triggered once on the expected split-pane path.
+- Canvas (run before `CoolwalkHuScreenParamsHook`): `displayProfile locked: 1200*720,160`,
+  `content_bounds=Rect(0, 0 - 1200, 720)`, `pillar_width=0`, rail width reclaimed to 0.
+- Projected apps (car launcher / AMap): `mBounds=Rect(0, 0 - 1200, 720)`, `letterBoxed=false`.
+- Right-edge black bar: after adding `CoolwalkHuScreenParamsHook`, `:car` read full 1280 HU width
+  and `CoolwalkProjectionBoundsHook` / `CoolwalkDrawingSpecWiden` expanded content slot back to 1280.
+- Two consecutive reboots with no `system_server` soft reboots.
 
 ## 0.24 (2026-08-30)
 
-基线：`c770d65` (`0.23#17.2-r5` / `3011`)。详见 [docs/releases/v0.24.0.md](docs/releases/v0.24.0.md)。
+Baseline: `c770d65` (`0.23#17.2-r5` / `3011`). See [docs/releases/v0.24.0.md](docs/releases/v0.24.0.md) for details.
 
 ### Added
-- Coolwalk 全屏链路：折叠车机侧边栏，回收 rail 宽度后按整块车机宽度重新申请投屏画布；
-  软重连后 rail 晚一拍出现 / 被饿死时会重试 settle。
-  （导入自 `lagXkjy/AADisplay@AADisplay-Split-Lite`，作者 qiang，按路径 cherry-pick 保留原提交历史）
-- `ICoreManager` 新增 Coolwalk rail 通道，全屏信号经 `system_server` 中转
-  （gearhead 在 Android 13+ 无法可靠投递定向广播）；4 个新方法追加在接口末尾，
-  既有 Stub 序号不变：`reportCoolwalkRailSnapshot` / `getCoolwalkRailSnapshot` /
-  `getCoolwalkReconnectEpochMs` / `notifyCoolwalkFullBleed`。
-- 手机端小窗多任务面板的图标模式（`recent_task_icon.xml`，不加载任务快照）。
-- 独立的 miuix 风格设置页 `SettingsActivity`。
-- 新增配置项 `HideAaUiControls`（默认 true）、`SuspendEyeCareOnProjection`（默认 true）、
-  `FixGboardFloatingIme`（默认 true）。
+- Coolwalk full-screen pipeline: collapses head unit sidebar, reclaims rail width, and re-requests
+  projection canvas at full HU width; retries settle if rail appears late or is starved after soft
+  reconnects. (Imported from `lagXkjy/AADisplay@AADisplay-Split-Lite`, author qiang, preserving history.)
+- Added Coolwalk rail channel to `ICoreManager`, relaying full-bleed signal via `system_server`
+  (gearhead cannot reliably deliver targeted broadcasts on Android 13+); 4 methods appended at end
+  preserving existing Stub ordinals: `reportCoolwalkRailSnapshot` / `getCoolwalkRailSnapshot` /
+  `getCoolwalkReconnectEpochMs` / `notifyCoolwalkFullBleed`.
+- Icon mode for phone floating window recents panel (`recent_task_icon.xml`, skips task snapshots).
+- Standalone miuix-style settings page `SettingsActivity`.
+- Added config options `HideAaUiControls` (default true), `SuspendEyeCareOnProjection` (default true),
+  `FixGboardFloatingIme` (default true).
 
 ### Changed
-- 版本号更新为：
+- Version bumped:
   - `versionName`: `0.24#17.2-e1`
   - `versionCode`: `3012`
-- 手机端镜像窗改为 MIUI 小窗形态：`WRAP_CONTENT` 浮窗、卡片外触摸穿透、顶栏/导航条可拖动、
-  右下角把手等比缩放、长按复位。缩放为两因子模型
-  `mDisplayRatio = mMirrorFitRatio * mMirrorScale`，触摸转发按该比例反算坐标，
-  所有缩放入口都必须走 `updateDipslaySize()`。
-- `DisplayImePolicy` 默认由强制 `LOCAL(0)` 改为 `FALLBACK_DISPLAY(1)`，键盘落回手机主屏，
-  不再挡掉车机半屏；取值收敛在 `0..2`。
-- `VoiceAssistShell` 默认值改为小爱语音助手（与 nitsuya 上游一致）。
-- `XposedInit` 分发调整：自身进程挂 `AaDisplayProcessHook`；Gboard 进程只挂
-  `GboardImeHook`，不再套用会把 `status_bar_height` 归零的 `OtherHook`。
-- 主界面卡片化重排，开关移入设置页。
+- Phone mirror window changed to MIUI freeform style: `WRAP_CONTENT` floating window, outside touch
+  pass-through, draggable top/nav bars, proportional resize via bottom-right handle, long-press reset.
+  Two-factor scaling `mDisplayRatio = mMirrorFitRatio * mMirrorScale`; all resize paths must go through
+  `updateDipslaySize()` so touch forwarding stays in sync.
+- `DisplayImePolicy` default changed from forced `LOCAL(0)` to `FALLBACK_DISPLAY(1)` so keyboard falls
+  back to phone main screen instead of covering half the head unit; clamped to `0..2`.
+- `VoiceAssistShell` default changed to XiaoAi (matching upstream nitsuya).
+- `XposedInit` dispatch updated: own process attaches `AaDisplayProcessHook`; Gboard process only
+  attaches `GboardImeHook`, avoiding `OtherHook` zeroing `status_bar_height`.
+- Main screen reorganized into cards; switches moved to settings page.
 
 ### Fixed
-- 修复小窗多任务面板溢出卡片（「错位」）：`ll_recent_task` 原为 `match_parent` 而父
-  `FrameLayout` 是 `wrap_content`，wrap 测量阶段 9:16 快照缩略图把条目撑得比车机画面还高。
-  改为图标网格 + 运行时按 `sv_mirror` 实际像素写入面板尺寸与列数，并以
-  `withSnapshot = false` 省掉逐任务的 `getTaskSnapshot` IPC。车机端快照模式不变。
-- 修复投屏画面跟随 MIUI/HyperOS 护眼模式变黄：护眼是 SF 层全局
-  `colorTransformMatrix`，无 per-display 排除接口，投屏期间临时关闭并在断开后按原值恢复。
-- 修复投屏里 Gboard 以悬浮键盘打开：只改 Gboard 读到的键盘形态，不写 Gboard 设置。
-- 修复 LSPosed 未激活时 `PreferenceManager` 内部抛 `SecurityException` 无法就地 catch：
-  `resolveModeForHooks()` 先探测可用 mode 再交给 `PreferenceManager`。
-- 修复连接 / 重连时闪媒体占位屏（随 Coolwalk 链路导入）。
+- Fixed floating window recents panel overflowing card ("misalignment"): switched from `match_parent`
+  snapshot cards to an icon grid sized at runtime from `sv_mirror` pixels, using `withSnapshot = false`
+  to avoid per-task `getTaskSnapshot` IPCs. Head unit snapshot mode unchanged.
+- Fixed projection turning yellow with MIUI/HyperOS eye-care mode: eye-care is a global SF
+  `colorTransformMatrix` with no per-display exclusion; temporarily disabled during projection and restored on disconnect.
+- Fixed Gboard opening as floating keyboard during projection: overrides Gboard preference reads without writing settings.
+- Fixed `PreferenceManager` throwing uncatchable `SecurityException` when LSPosed is inactive:
+  `resolveModeForHooks()` probes an available mode first.
+- Fixed media placeholder flashing on connect/reconnect (imported with Coolwalk pipeline).
 
 ### Removed
-- 删除随 Coolwalk 目录导入的 `AaCoolwalkHuTouchHook.kt`：本分支不接管车机侧触控，
-  控制走手机端小窗，留着是死代码。参考实现见 `reference/AADisplay-Split-Lite`。
+- Removed `AaCoolwalkHuTouchHook.kt` imported with the Coolwalk directory: this branch uses the phone
+  floating window instead of taking over head unit touch. See `reference/AADisplay-Split-Lite`.
 
 ### Verification
-- 构建通过：`:aa-display:assembleDebug`
-- 测试环境：HyperOS `3.0.307.6` + Android Auto `17.2` + LSPosed，车机端为 DHU
-- 安装并重启测试机（`system_server` 侧改动需重启生效）
-- DHU 实机验证：小窗拖动 / 缩放 / 长按复位正常；多任务面板在 100% 与缩小状态下均完整
-  落在车机画面区域内，列数在 3 / 2 之间自适应；点击图标能切换车机前台任务；
-  logcat 无 `InflateException` / `FATAL EXCEPTION` / `system_server` 异常。
+- Build passed: `:aa-display:assembleDebug`
+- Environment: HyperOS `3.0.307.6` + Android Auto `17.2` + LSPosed + DHU
+- Installed and rebooted test device (`system_server` changes require reboot)
+- Verified on DHU: floating window drag / resize / long-press reset work; recents panel fits within
+  head unit bounds at both 100% and shrunk sizes (3 / 2 adaptive columns); tapping icons switches
+  foreground task; no `InflateException` / `FATAL EXCEPTION` / `system_server` errors in logcat.
 
 ## 0.23.6 (2026-07-26)
 

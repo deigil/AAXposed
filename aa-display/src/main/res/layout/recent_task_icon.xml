@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  多任务面板的「图标模式」条目：只显示应用图标 + 名称，不加载任务快照。
-  手机端小窗用这个布局（快照缩略图会把 wrap_content 的卡片撑爆，而且缩小后根本看不清）；
-  车机端 AaRecentTaskFragment 仍用 @layout/recent_task 的快照模式。
-  id（iv_icon / tv_name）与 recent_task.xml 保持一致，DisplayRecyclerViewAdapter 两套复用。
+  Icon-mode item for the recents panel: shows only app icon + name without loading task snapshots.
+  Used by the phone floating window (snapshot thumbnails would overflow wrap_content cards and are unreadable when scaled down);
+  AaRecentTaskFragment on the head unit still uses snapshot mode via @layout/recent_task.
+  IDs (iv_icon / tv_name) match recent_task.xml so DisplayRecyclerViewAdapter can reuse both.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"

@@ -1,5 +1,5 @@
 <resources>
-    <!-- Base application theme：miuix 观感（浅色灰底 + 蓝色强调） -->
+    <!-- Base application theme: miuix look (light gray background + blue accent) -->
     <style name="Theme.AADisplay" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:enforceNavigationBarContrast">false</item>
@@ -7,8 +7,8 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:enforceStatusBarContrast">false</item>
         <item name="android:windowLightStatusBar">true</item>
-        <!-- PreferenceFragmentCompat 在 onCreate 里就解析 preferenceTheme，
-             运行时 applyStyle 来不及，必须写在 Activity 主题上 -->
+        <!-- PreferenceFragmentCompat resolves preferenceTheme in onCreate;
+             runtime applyStyle is too late, so it must be set on the Activity theme -->
         <item name="preferenceTheme">@style/PreferenceThemeOverlay.Miuix</item>
         <item name="materialSwitchStyle">@style/Widget.Material3.CompoundButton.MaterialSwitch</item>
 
@@ -21,7 +21,7 @@
         <item name="toolbarStyle">@style/Miuix.Toolbar</item>
     </style>
 
-    <!-- miuix 的标题栏是无阴影、无着色、标题偏粗的大字 -->
+    <!-- miuix toolbar is shadowless, untinted, with a large medium-weight title -->
     <style name="Miuix.Toolbar" parent="Widget.Material3.Toolbar">
         <item name="android:background">@android:color/transparent</item>
         <item name="titleTextAppearance">@style/Miuix.Toolbar.Title</item>
@@ -33,7 +33,7 @@
         <item name="android:textColor">@color/miuix_text_primary</item>
     </style>
 
-    <!-- 手机端悬浮窗：贴近 MIUI 的浅色/深色半透明面板 -->
+    <!-- Phone floating window: light/dark translucent panel close to MIUI -->
     <style name="Theme.AADisplay.Window" parent="Theme.Material3.DayNight">
         <item name="colorPrimary">@color/miuix_blue</item>
         <item name="colorPrimaryContainer">@color/window_panel</item>

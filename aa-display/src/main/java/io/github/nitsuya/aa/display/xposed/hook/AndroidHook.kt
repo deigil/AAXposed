@@ -251,30 +251,30 @@ object AndroidHook : BaseHook() {
     }
 
     /**
-     * 让投屏虚拟屏上的应用铺满整屏。
+     * Make apps on the projection virtual display fill the entire screen.
      *
-     * 竖屏应用（微信 `SCREEN_ORIENTATION_PORTRAIT`、bilibili 同理）落到这块横屏
-     * VirtualDisplay 上时，WM 的 fixed-orientation letterbox 会把它压成 590x720
-     * 的居中窄条（`bounds=Rect(345, 0 - 935, 720)`、`letterBoxed=true`），两侧留黑边。
+     * When portrait-only apps (WeChat `SCREEN_ORIENTATION_PORTRAIT`, Bilibili, etc.) launch on the
+     * landscape VirtualDisplay, WM's fixed-orientation letterbox squeezes them into a centered 590x720
+     * strip (`bounds=Rect(345, 0 - 935, 720)`, `letterBoxed=true`) with black bars on both sides.
      *
-     * 实测结论（1280x720/160 叠加屏 A/B）：
-     * - `IWindowManager.setIgnoreOrientationRequest(displayId, true/false)` 对虚拟屏
-     *   没有效果，两种取值下边界都是那条 590x720；虚拟屏默认已经是 true。
-     * - 把 activity 的 override orientation 去掉（compat `OVERRIDE_ANY_ORIENTATION_TO_USER`）
-     *   后边界立刻变成 `Rect(0, 0 - 1280, 720)`、`letterBoxed=false`。
+     * Tested findings (1280x720/160 overlay A/B):
+     * - `IWindowManager.setIgnoreOrientationRequest(displayId, true/false)` has no effect on virtual
+     *   displays; both values produce the same 590x720 bounds (virtual displays default to true).
+     * - Stripping the activity's override orientation (compat `OVERRIDE_ANY_ORIENTATION_TO_USER`)
+     *   immediately expands bounds to `Rect(0, 0 - 1280, 720)`, `letterBoxed=false`.
      *
-     * 所以这里直接在 [ActivityRecord.getOverrideOrientation] 出口把投屏屏上的固定朝向
-     * 改成 `SCREEN_ORIENTATION_UNSPECIFIED`，交给 display 自己的朝向决定布局。
-     * 不写任何 compat 覆盖、不碰应用自己的 `getRequestedOrientation()`，
-     * 断开投屏时 unhook 即恢复。
+     * Therefore, we override [ActivityRecord.getOverrideOrientation] to return
+     * `SCREEN_ORIENTATION_UNSPECIFIED` on the projection display, letting the display's own
+     * orientation drive layout without writing compat overrides or touching `getRequestedOrientation()`.
+     * Restores automatically on unhook when projection disconnects.
      *
-     * 全程只按 [CoreManagerService.getDisplayId] 比对，与分辨率无关
-     * （1280x720/160 的 DHU 和 800x533/170 的车机行为一致）。
+     * Matches purely by [CoreManagerService.getDisplayId], independent of resolution
+     * (1280x720/160 DHU and 800x533/170 head unit behave identically).
      */
     object AppFullscreenOnProjection {
         private const val SCREEN_ORIENTATION_UNSPECIFIED = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 
-        // Android 14+：ActivityRecord.getOverrideOrientation()，WM 解析朝向的唯一入口。
+        // Android 14+: ActivityRecord.getOverrideOrientation(), the single entry point for WM orientation resolution.
         private val activityRecord_getOverrideOrientation by lazy {
             if (!IsSystemEnv) return@lazy null
             try {
@@ -287,7 +287,7 @@ object AndroidHook : BaseHook() {
             }
         }
 
-        // Android 12/13 回退：没有 getOverrideOrientation，朝向由 getOrientation(candidate) 汇总。
+        // Android 12/13 fallback: no getOverrideOrientation; orientation is aggregated by getOrientation(candidate).
         private val activityRecord_getOrientation by lazy {
             if (!IsSystemEnv) return@lazy null
             try {

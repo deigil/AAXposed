@@ -12,12 +12,13 @@ import androidx.recyclerview.widget.RecyclerView
 import io.github.nitsuya.aa.display.R
 
 /**
- * 把偏好列表画成 miuix 的“分组卡片”：
- * 连续的普通偏好行合并成一张大圆角白卡片，分组标题（tag = miuix_category）
- * 留在卡片之外，行与行之间画一条左缩进的细分割线。
+ * Draws the preference list as miuix-style grouped cards:
+ * consecutive regular preference rows merge into a single large rounded white card,
+ * category headers (tag = miuix_category) stay outside the card, and a thin left-indented
+ * divider is drawn between rows.
  *
- * 卡片是背景层，所以在 onDraw（子 View 之前）绘制；水平内缩由 RecyclerView
- * 自身的 padding 提供（见 SettingsActivity）。
+ * Cards form the background layer so they are drawn in onDraw (before child views);
+ * horizontal inset is provided by RecyclerView's own padding (see SettingsActivity).
  */
 class MiuixCardDecoration(context: Context) : RecyclerView.ItemDecoration() {
 
@@ -39,8 +40,8 @@ class MiuixCardDecoration(context: Context) : RecyclerView.ItemDecoration() {
     private val rect = RectF()
 
     private fun isCategory(parent: RecyclerView, child: View): Boolean {
-        // tag 只在自定义 category 布局生效；库内部还可能用别的布局，
-        // 所以优先按 adapter 里的 Preference 类型判断，tag 作为兜底。
+        // Tag only applies to the custom category layout; the library may use other layouts,
+        // so check Preference type via adapter first and fall back to tag.
         val adapter = parent.adapter
         if (adapter is PreferenceGroupAdapter) {
             val position = parent.getChildAdapterPosition(child)
@@ -77,7 +78,7 @@ class MiuixCardDecoration(context: Context) : RecyclerView.ItemDecoration() {
             if (groupStart == null) {
                 groupStart = child
             } else {
-                // 组内相邻两行之间画分割线
+                // Draw divider between adjacent rows within a group
                 canvas.drawRect(
                     left + dividerInset,
                     child.top.toFloat(),

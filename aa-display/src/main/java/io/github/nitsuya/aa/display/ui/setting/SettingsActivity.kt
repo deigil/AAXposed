@@ -26,11 +26,12 @@ import androidx.appcompat.app.AlertDialog
 import androidx.preference.ListPreference
 
 /**
- * 高级设置：把 AADisplayConfig 里的键位直接暴露成偏好项。
+ * Advanced settings: exposes keys in AADisplayConfig directly as preferences.
  *
- * 关键点是配置文件必须仍然能被 Xposed 侧读到 —— PreferenceManager 自己去
- * getSharedPreferences，所以这里提前探测出可用的 mode 交给它，并在每次改动后
- * 补一次 makeReadableForHooks（MODE_WORLD_READABLE 不可用时会退化成放宽文件权限）。
+ * Key point: the config file must remain readable by the Xposed side — PreferenceManager calls
+ * getSharedPreferences internally, so we probe an available mode upfront and pass it in,
+ * then call makeReadableForHooks after each change (falls back to relaxing file permissions
+ * when MODE_WORLD_READABLE is unavailable).
  */
 class SettingsActivity : BaseActivity<ActivitySettingsBinding>(ActivitySettingsBinding::class.java) {
 
@@ -47,8 +48,8 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>(ActivitySettingsB
         SharedPreferences.OnSharedPreferenceChangeListener {
 
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
-            // preferenceTheme 由 Theme.AADisplay 提供（PreferenceFragmentCompat 在
-            // onCreate 阶段就解析完了，这里再 applyStyle 已经来不及）
+            // preferenceTheme is provided by Theme.AADisplay (PreferenceFragmentCompat resolves it
+            // during onCreate, so calling applyStyle here would be too late).
             preferenceManager.apply {
                 sharedPreferencesName = AADisplayConfig.ConfigName
                 sharedPreferencesMode =
@@ -60,7 +61,7 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>(ActivitySettingsB
         }
 
         // ---------------------------------------------------------------
-        // 选择式设置：预设 / 手机上已安装的选项 + 「自定义…」
+        // Choice-based settings: presets / installed options on device + "Custom..."
         // ---------------------------------------------------------------
 
         private data class Choice(val label: String, val value: String)
@@ -99,8 +100,9 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>(ActivitySettingsB
         }
 
         /**
-         * ListPreference 的 entries 在运行时生成：预设项 + （当前值不在预设里时的「自定义：…」）+ 「自定义…」。
-         * 选中「自定义…」会弹出文本框，保存后写回同一个 key，所以 Xposed 侧读取的格式不变。
+         * ListPreference entries are built at runtime: presets + (current value if custom) + "Custom...".
+         * Selecting "Custom..." pops up an input dialog and writes back to the same key so the format
+         * read by the Xposed side stays unchanged.
          */
         private fun bindChoicePreference(
             key: String,
@@ -122,7 +124,7 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>(ActivitySettingsB
                 preference.entries = choices.map { it.label }.toTypedArray()
                 preference.entryValues = choices.map { it.value }.toTypedArray()
                 preference.summary = choices.first { it.value == current }.label
-                // value 为 null 时 ListPreference 不会高亮任何项
+                // ListPreference highlights nothing when value is null
                 if (preference.value == null) preference.setValueIndex(
                     choices.indexOfFirst { it.value == current }
                 )
@@ -154,8 +156,8 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>(ActivitySettingsB
         }
 
         /**
-         * 扫描手机上声明了 VOICE_COMMAND / ASSIST / VOICE_ASSIST 的 Activity，
-         * 每个生成一条 `am start` 命令（单引号包起来，避免内部类名里的 `$` 被 shell 展开）。
+         * Scan Activities on the phone declaring VOICE_COMMAND / ASSIST / VOICE_ASSIST and build an
+         * `am start` command for each (single-quoted to avoid shell expansion of `$` in inner class names).
          */
         private fun queryVoiceAssistants(): List<Choice> {
             val pm = requireContext().packageManager
@@ -179,7 +181,7 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>(ActivitySettingsB
                     val component = "${ai.packageName}/${ai.name}"
                     val label = info.loadLabel(pm)?.toString()?.ifBlank { null } ?: ai.packageName
                     val command = "am start -a $action -n '$component'"
-                    // 同一个组件只保留第一个 action
+                    // Keep only the first action per component
                     found.putIfAbsent(
                         component,
                         Choice("$label (${ai.packageName})", command)
@@ -190,9 +192,9 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>(ActivitySettingsB
         }
 
         /**
-         * 「禁止 Waze / Google 地图投屏」不是纯配置项：真正生效靠 root 去
-         * pm disable 对应的投屏组件。这里在写入前先执行，失败就把开关退回原位、
-         * 返回 false 让 preference 不落盘，免得配置和实际组件状态脱节。
+         * "Disable Waze / Google Maps on AA" is not a pure config option: taking effect relies on
+         * root `pm disable` on the projection component. Execute before persisting; on failure revert
+         * the switch and return false so the preference stays in sync with the actual component state.
          */
         private fun bindAppProjectionSwitches() {
             bindShellBackedSwitch(AADisplayConfig.DisableWazeOnAa.key, R.string.disable_waze_on_aa_apply_failed) {
@@ -229,7 +231,7 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>(ActivitySettingsB
             savedInstanceState: Bundle?
         ): RecyclerView {
             return super.onCreateRecyclerView(inflater, parent, savedInstanceState).apply {
-                // 卡片由 MiuixCardDecoration 画，靠 RecyclerView 的左右 padding 内缩
+                // Cards are drawn by MiuixCardDecoration, inset via RecyclerView horizontal padding
                 val side = (16 * resources.displayMetrics.density).toInt()
                 val bottom = (28 * resources.displayMetrics.density).toInt()
                 setPadding(side, 0, side, bottom)
@@ -241,7 +243,7 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>(ActivitySettingsB
 
         override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
             super.onViewCreated(view, savedInstanceState)
-            // 关掉 preference 库自带的分割线，改由 MiuixCardDecoration 绘制
+            // Disable the preference library's built-in divider; MiuixCardDecoration draws it instead
             setDivider(null)
             setDividerHeight(0)
         }

@@ -55,13 +55,13 @@ object AaUiHook: AaHook() {
     override val tagName: String = CoolwalkHookEnv.TAG
 
     /**
-     * true：安装 Coolwalk 隐藏 UI 控件栈（车机侧边栏折叠 + 投屏铺满整块车机宽度），
-     *       控制方案保持在手机端悬浮窗（DisplayWindow / ACTION_SCREEN_CONTROL）。
-     * false：走旧行为，在车机侧边栏重建 home/全屏/返回/语音助手图标。
+     * true: install Coolwalk hide-UI-controls stack (collapse head unit sidebar + stretch projection to full HU width),
+     *       keeping controls in the phone floating window (DisplayWindow / ACTION_SCREEN_CONTROL).
+     * false: legacy behavior, rebuild home/fullscreen/back/voice-assist icons in the head unit sidebar.
      */
     private var hideAaUiControls: Boolean = true
 
-    /** Coolwalk 分支共享状态；仅在 [hideAaUiControls] 为 true 时填充。 */
+    /** Shared state for the Coolwalk branch; populated only when [hideAaUiControls] is true. */
     private val env = CoolwalkHookEnv()
 
     private lateinit var layoutInfoConstructor: Constructor<*>
@@ -82,8 +82,8 @@ object AaUiHook: AaHook() {
     private var canHookAssistantIcon: Boolean = false
 
     override fun isSupportProcess(processName: String): Boolean {
-        // Coolwalk 隐藏栈需要 :car（侧边栏/合成器）与 :projection（布局/投屏）两个进程；
-        // 旧的侧边栏重建只在 :projection 生效，由 isEnabled 再过滤一次。
+        // Coolwalk hide stack needs both :car (sidebar/compositor) and :projection (layout/projection);
+        // legacy sidebar rebuild only runs in :projection, filtered again in isEnabled.
         return processProjection == processName || processCar == processName
     }
 
@@ -92,7 +92,7 @@ object AaUiHook: AaHook() {
         env.autoOpenEnabled = AADisplayConfig.AutoOpen.get(config)
         env.forceRightAngle = AADisplayConfig.ForceRightAngle.get(config)
         if (hideAaUiControls) return true
-        // 旧行为不涉及 :car。
+        // Legacy behavior does not involve :car.
         return processProjection == processName
     }
 
@@ -105,14 +105,14 @@ object AaUiHook: AaHook() {
     }
 
     // ------------------------------------------------------------------
-    // Coolwalk 隐藏 UI 控件（来自 Split-Lite 分支）
+    // Coolwalk hide UI controls (from Split-Lite branch)
     // ------------------------------------------------------------------
 
     private fun loadDexClassCoolwalk(bridge: DexKitBridge, target: HookTarget) {
-        // Compose 约束断言守卫：两个进程都要装，:car 会在下面提前 return。
+        // Compose constraints assertion guard: install in both processes before :car returns early below.
         CoolwalkComposeConstraintsGuard.resolve(bridge, target)
-        // 车机画布真值来源：:car 里没有 HU 尺寸的 VD，也收不到 :projection 的上报，
-        // 只能读 gearhead 自己的 DisplayParams。同样必须在 :car 的提前 return 之前。
+        // True HU canvas dimensions: :car has no HU-sized VD and cannot receive :projection reports,
+        // so it must read gearhead's own DisplayParams before :car returns early.
         CoolwalkHuScreenParamsHook.resolve(bridge, target)
 
         env.contentBoundsMethods = try {
@@ -213,12 +213,12 @@ object AaUiHook: AaHook() {
     }
 
     /**
-     * AA 17.8+：`CarSystemUiControllerService` 已删除，启动入口变成 `ProjectionContext`
-     * 单例上的 `startCarActivity(Intent, ActivityOptions)`。用 AA 自己的字符串常量定位，
-     * 避免挑到同类里那个空实现的 `(Intent)V` 兄弟方法。
+     * AA 17.8+: `CarSystemUiControllerService` was removed; the launch entry became
+     * `startCarActivity(Intent, ActivityOptions)` on the `ProjectionContext` singleton.
+     * Located via AA's own string constant to avoid picking the no-op `(Intent)V` sibling.
      *
-     * 来源：移植自 lagXkjy/AADisplay 分支 AADisplay-Split-Lite (v0.24#17.8-r1)
-     * 的 `AaUiHook.resolveStartMethodLive`（GPLv3）。
+     * Source: ported from lagXkjy/AADisplay branch AADisplay-Split-Lite (v0.24#17.8-r1)
+     * `AaUiHook.resolveStartMethodLive` (GPLv3).
      */
     private fun resolveProjectionLauncher(bridge: DexKitBridge, target: HookTarget) {
         val hits = try {
@@ -264,10 +264,10 @@ object AaUiHook: AaHook() {
 
     private fun hookCoolwalk(target: HookTarget) {
         env.loadProjectionResources()
-        // 必须在其它几何改写之前：0/1 px 容器会让 Compose 的 Constraints 断言炸掉进程。
+        // Must come before other geometry hooks: 0/1 px containers will crash Compose Constraints assertions.
         CoolwalkComposeConstraintsGuard.install()
-        // 必须在下面所有按宽度决策的钩子之前装：它负责把真正的车机宽度喂给协调器，
-        // 否则 :car 只知道内容槽宽度（HU − 侧边栏），右侧就会留一条黑边。
+        // Must install before all width-based hooks below: feeds the true HU width to the coordinator,
+        // otherwise :car only sees content-slot width (HU - sidebar), leaving a black bar on the right.
         CoolwalkHuScreenParamsHook.install(target.classLoader)
         CoolwalkDrawingSpecWiden.installGearhead(target.classLoader)
         CoolwalkProjectionBoundsHook.install(
@@ -282,7 +282,7 @@ object AaUiHook: AaHook() {
             if (env.canHookFacetBar) {
                 CoolwalkFacetChrome.install(env)
             }
-            // 不安装 AaCoolwalkHuTouchHook：触控/控制方案保留手机端悬浮窗。
+            // Do not install AaCoolwalkHuTouchHook: touch/control stays on the phone floating window.
             logDebug(tagName, "AaUiHook: Coolwalk hooks installed (:car)")
             return
         }
@@ -296,7 +296,7 @@ object AaUiHook: AaHook() {
     }
 
     // ------------------------------------------------------------------
-    // 旧行为：在车机侧边栏重建控件
+    // Legacy behavior: rebuild controls in the head unit sidebar
     // ------------------------------------------------------------------
 
     private fun loadDexClassLegacy(bridge: DexKitBridge, target: HookTarget) {
@@ -353,7 +353,7 @@ object AaUiHook: AaHook() {
                 "AaUiHook: skip facet-bar override, missing resources: facet=$resLayoutGhFacetBarId, status=$resIdStatusBarId, launcherContainer=$resIdLauncherAndDashboardIconContainerId, launcherIcon=$resIdLauncherAndDashboardIconId"
             )
         }
-        // 助手图标在部分 AA 版本已被移除，缺失时降级：只保留方控触发语音助手
+        // Assistant icon was removed in some AA versions; degrade to steering wheel voice trigger only.
         canHookAssistantIcon = resIdAssistantIconContainerId != 0 && resIdAssistantIconId != 0
         if (!canHookAssistantIcon) {
             log(
@@ -546,7 +546,7 @@ object AaUiHook: AaHook() {
                 setPadding(0, 5, 0, 5)
             }
             val bottomIds = arrayListOf(homeBtnId, appSwitchBtnId, backBtnId)
-            // 恢复 nitsuya 的助手图标接管：点击原生助手图标改为触发自定义语音助手 Shell（小爱）
+            // Restore nitsuya's assistant icon takeover: tapping native assistant icon triggers custom voice assist shell
             val assistantIconView: View? = if (canHookAssistantIcon) resultViewGroup.findViewById(resIdAssistantIconId) else null
             val assistantContainerView: View? = if (canHookAssistantIcon) resultViewGroup.findViewById(resIdAssistantIconContainerId) else null
             if (assistantIconView != null && assistantContainerView != null) {

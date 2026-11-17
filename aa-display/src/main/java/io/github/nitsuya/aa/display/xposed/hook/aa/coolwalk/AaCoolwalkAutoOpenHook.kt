@@ -162,18 +162,12 @@ object AaCoolwalkAutoOpenHook {
     }
 
     /**
-     * AA 17.8 删掉了 `CarSystemUiControllerService`，旧的 `startMethod` 不再存在。
-     * 改走 aauto 的一体化车机客户端（`AaMainFragment` 用的也是这条路径），
-     * 不再依赖 gearhead 内部的混淆类名。连接是异步的：成败都在回调里，
-     * 失败只记日志，不会影响已经起来的投屏。
-     */
-    /**
-     * 通过 AA 自己的 CarActivity 启动入口把 AADisplay 送上当前车机画面。
+     * Launch AADisplay onto the current head unit screen via AA's own CarActivity entry point.
      *
-     * ≤17.4 是 `CarSystemUiControllerService.a(Intent)` 静态方法；
-     * 17.8 删掉了那个类，入口变成 `ProjectionContext` 单例上的
-     * `startCarActivity(Intent, ActivityOptions)`。
-     * 两种形态都由 [CoolwalkHookEnv.invokeStartCarActivity] 统一处理。
+     * <=17.4 uses the static `CarSystemUiControllerService.a(Intent)` method;
+     * 17.8 removed that class, and the entry point became `startCarActivity(Intent, ActivityOptions)`
+     * on the `ProjectionContext` singleton.
+     * Both forms are handled uniformly by [CoolwalkHookEnv.invokeStartCarActivity].
      */
     private fun launchAaDisplay(env: CoolwalkHookEnv) {
         env.invokeStartCarActivity(aaDisplayLaunchIntent())
@@ -238,8 +232,8 @@ object AaCoolwalkAutoOpenHook {
         val svcClass = try {
             loadClass("com.google.android.projection.gearhead.service.CarSystemUiControllerService")
         } catch (e: Throwable) {
-            // AA 17.8 起该 service 已移除。AutoOpen 现在走车机 SDK（launchAaDisplayOnCar），
-            // 这条 kick 只是旧版本上的额外加成，缺失属预期，不是错误。
+            // Removed since AA 17.8. AutoOpen now uses the car SDK (launchAaDisplayOnCar);
+            // this kick is only an extra boost on older versions, so its absence is expected.
             logDebug(CoolwalkHookEnv.TAG, "AaUiHook: AutoOpen connected-kick: SysUi service absent (expected on AA 17.8+)")
             return
         }

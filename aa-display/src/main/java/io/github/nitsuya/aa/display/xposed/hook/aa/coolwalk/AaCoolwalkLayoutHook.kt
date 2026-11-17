@@ -278,10 +278,10 @@ object AaCoolwalkLayoutHook {
             ctor.isAccessible = true
             ctor.hookBefore { param ->
                 // Zero horizontal decoration insets (Coolwalk pillar gutters on both sides);
-                // 这两项属于全屏铺满的几何回收，与圆角开关无关。
+                // These two items belong to full-screen geometry reclamation and are unrelated to the rounded-corner toggle.
                 if (param.args.isNotEmpty() && param.args[0] is Int) param.args[0] = 0
                 if (param.args.size > 2 && param.args[2] is Int) param.args[2] = 0
-                // arg5 是圆角半径，跟随 AADisplayConfig.ForceRightAngle。
+                // arg5 is the corner radius, following AADisplayConfig.ForceRightAngle.
                 if (env.forceRightAngle && param.args.size > 5 && param.args[5] is Int) param.args[5] = 0
             }
         } catch (e: Throwable) {

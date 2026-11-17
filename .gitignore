@@ -18,6 +18,6 @@ key.jks
 *.keystore
 *.jks
 
-# Kotlin/Gradle 本地缓存，不入库
+# Kotlin/Gradle local cache, do not commit
 .kotlin/
 .gradle-user/

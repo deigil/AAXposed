@@ -1,7 +1,7 @@
 <resources>
     <color name="color_warning">#FBC02D</color>
 
-    <!-- miuix 风格调色（浅色） -->
+    <!-- miuix-style palette (light) -->
     <color name="miuix_blue">#FF3482FF</color>
     <color name="miuix_blue_dark">#FF2A6EDB</color>
     <color name="miuix_page_background">#FFF7F7F9</color>
@@ -12,7 +12,7 @@
     <color name="miuix_divider">#14000000</color>
     <color name="miuix_success">#FF39B54A</color>
 
-    <!-- 悬浮窗 -->
+    <!-- Floating window -->
     <color name="window_scrim">#99000000</color>
     <color name="window_recent_scrim">#B3000000</color>
     <color name="window_panel">#F2FFFFFF</color>

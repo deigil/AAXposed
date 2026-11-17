@@ -149,11 +149,12 @@ class MainActivity :
     }
 
     /**
-     * 状态卡第二行显示手机上装的 Android Auto 版本。
+     * The second line of the status card displays the Android Auto version installed on the phone.
      *
-     * gearhead 的 versionName 形如 17.3.662854-release，尾巴上的 channel 后缀对用户没
-     * 意义，截掉只留版本号。包名已经写在 manifest 的 <queries> 里，所以 targetSdk 30+
-     * 的包可见性限制不会挡住这次查询。
+     * gearhead's versionName looks like 17.3.662854-release; the trailing channel suffix is not
+     * meaningful to the user, so strip it to keep only the version number. The package name is
+     * already declared in the manifest <queries>, so targetSdk 30+ package visibility restrictions
+     * will not block this query.
      */
     private fun aaVersionText(): String {
         val versionName = try {

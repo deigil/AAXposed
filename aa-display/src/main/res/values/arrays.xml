@@ -3,7 +3,7 @@
         <item>android</item>
         <item>com.google.android.projection.gearhead</item>
         <item>com.waze</item>
-        <!-- Gboard：投屏横屏时修正悬浮键盘，见 GboardImeHook -->
+        <!-- Gboard: fix floating keyboard when projection is in landscape, see GboardImeHook -->
         <item>com.google.android.inputmethod.latin</item>
         <item>com.autonavi.amapauto</item>
         <item>com.ss.squarehome2</item>

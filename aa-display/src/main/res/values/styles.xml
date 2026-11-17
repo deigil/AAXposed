@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- ============ miuix 风格基础样式 ============ -->
-    <!-- miuix 的观感要点：大圆角白卡片、灰底页面、分组列表、
-         标题偏粗、次要说明小一号灰字、几乎不用阴影。 -->
+    <!-- ============ miuix-style base styles ============ -->
+    <!-- miuix look: large rounded white cards, gray page background, grouped lists,
+         medium-weight titles, smaller gray secondary text, almost no shadows. -->
 
     <style name="Miuix.Card" parent="Widget.Material3.CardView.Filled">
         <item name="cardBackgroundColor">@color/miuix_card</item>
@@ -17,7 +17,7 @@
         <item name="cardCornerRadius">20dp</item>
     </style>
 
-    <!-- 分组标题：miuix 里在卡片外侧、左边距对齐、灰色小字 -->
+    <!-- Category title: in miuix it sits outside the card, left-aligned, small gray text -->
     <style name="Miuix.GroupTitle" parent="">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
@@ -30,7 +30,7 @@
         <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 
-    <!-- 列表行标题 / 副标题 -->
+    <!-- List row title / summary -->
     <style name="Miuix.ItemTitle" parent="">
         <item name="android:textSize">16sp</item>
         <item name="android:textColor">@color/miuix_text_primary</item>
@@ -48,7 +48,7 @@
         <item name="android:textColor">@color/miuix_text_secondary</item>
     </style>
 
-    <!-- 分割线：只在行与行之间，左侧留出与文字对齐的缩进 -->
+    <!-- Divider: only between rows, indented on the left to align with text -->
     <style name="Miuix.Divider" parent="">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">0.5dp</item>
@@ -56,7 +56,7 @@
         <item name="android:background">@color/miuix_divider</item>
     </style>
 
-    <!-- miuix 的主按钮是全宽胶囊 -->
+    <!-- miuix primary button is a full-width pill -->
     <style name="Miuix.Button" parent="Widget.Material3.Button">
         <item name="android:minHeight">50dp</item>
         <item name="cornerRadius">25dp</item>
@@ -72,13 +72,13 @@
         <item name="boxCornerRadiusBottomEnd">14dp</item>
     </style>
 
-    <!-- 兼容旧布局引用 -->
+    <!-- Legacy layout reference compatibility -->
     <style name="DeviceInfoDialogLabel" parent="Miuix.ItemTitle" />
     <style name="DeviceInfoDialogValue" parent="Miuix.ItemValue" />
 
-    <!-- ============ 高级设置页（偏好列表）的 miuix 化 ============ -->
-    <!-- 在 rikka 的 Material3 偏好主题之上，把行布局换成 pref_miuix*，
-         卡片背景由 MiuixCardDecoration 绘制，所以行本身背景透明。 -->
+    <!-- ============ miuix styling for Advanced Settings (preference list) ============ -->
+    <!-- On top of rikka's Material3 preference theme, swap row layouts to pref_miuix*;
+         card backgrounds are drawn by MiuixCardDecoration, so row backgrounds are transparent. -->
     <style name="Preference.Miuix" parent="Preference.Rikka.Material3">
         <item name="android:layout">@layout/pref_miuix</item>
         <item name="layout">@layout/pref_miuix</item>
@@ -106,7 +106,7 @@
 
     <style name="PreferenceThemeOverlay.Miuix" parent="PreferenceThemeOverlay.Rikka.Material3">
         <item name="preferenceCategoryStyle">@style/Preference.Miuix.Category</item>
-        <!-- rikka 默认把分组标题染成 ?colorPrimary，miuix 要的是灰色小字 -->
+        <!-- rikka tints category titles to ?colorPrimary by default; miuix uses small gray text -->
         <item name="preferenceCategoryTitleTextColor">@color/miuix_text_secondary</item>
         <item name="preferenceStyle">@style/Preference.Miuix</item>
         <item name="dialogPreferenceStyle">@style/Preference.Miuix</item>

@@ -299,7 +299,7 @@ object CoolwalkRailMath {
      *
      * e2 / 3016 shipped a cap here (`written = min(target, incomingWidth)`), which turned
      * `Rect(80, 0, 1280, 720)` into `Rect(0, 0, 1200, 720)` and pinned the whole session to a
-     * 1200px canvas on a 1280px HU — 高德 and every other projected app lost the right 80px to
+     * 1200px canvas on a 1280px HU — AMap and every other projected app lost the right 80px to
      * black, while gearhead's own Coolwalk launcher (drawn into the real 1280px window) and the
      * phone-side preview (mirroring the 1200px VD) both looked correct. The cap was added believing
      * a wider rect is what threw `IllegalArgumentException: maxWidth must be >= than minWidth` in

@@ -14,67 +14,63 @@ import io.github.nitsuya.aa.display.xposed.log
 import io.github.nitsuya.aa.display.xposed.logDebug
 
 /**
- * 投屏时 Gboard 偶发以**悬浮键盘**打开的修复。
+ * Fix for Gboard occasionally opening as a **floating keyboard** during projection.
  *
- * ## 为什么会发生
+ * ## Why this happens
  *
- * Gboard 的键盘形态（`KeyboardModeManager` / `KeyboardModeSwitcher`，枚举
- * `1=NORMAL 2=ONE_HANDED 3=FLOATING 4=SPLIT`）由两条路径决定，两条都被投屏触发：
+ * Gboard's keyboard mode (`KeyboardModeManager` / `KeyboardModeSwitcher`, enum
+ * `1=NORMAL 2=ONE_HANDED 3=FLOATING 4=SPLIT`) is determined by two paths, both triggered by projection:
  *
- * 1. **自动悬浮**（`KeyboardModeManager.ap()`）：设备形态不是平板时，若
- *    Phenotype 开关 `enable_auto_float_keyboard_in_landscape` /
- *    `_in_freeform` / `_in_multi_window` 命中，且对应的持久化布尔
- *    `float_keyboard_in_landscape` / `float_keyboard_in_freeform` /
- *    `float_keyboard_in_multi_window` 为 true，则把
- *    `KeyboardModeSwitcher` 的“临时形态”直接置为 3（FLOATING）。
- *    横屏判定就是 `getConfiguration().orientation == ORIENTATION_LANDSCAPE`，
- *    我们的 1280x720 投屏 VirtualDisplay 必然满足。
+ * 1. **Auto-float** (`KeyboardModeManager.ap()`): when device form factor is not tablet, if
+ *    Phenotype flags `enable_auto_float_keyboard_in_landscape` / `_in_freeform` / `_in_multi_window`
+ *    match and the corresponding persisted boolean `float_keyboard_in_landscape` / `float_keyboard_in_freeform` /
+ *    `float_keyboard_in_multi_window` is true, `KeyboardModeSwitcher`'s temporary mode is set to 3 (FLOATING).
+ *    Landscape check is `getConfiguration().orientation == ORIENTATION_LANDSCAPE`, which our 1280x720
+ *    projection VirtualDisplay always satisfies.
  *
- * 2. **粘滞悬浮**（`KeyboardModeUtils.h(Context)`）：真正决定开屏形态的是持久化
- *    int `keyboard_mode_landscape`（手机形态 + 横屏时选中的键就是它）。一旦它
- *    曾被写成 3 —— 用户手动选过悬浮，或上一次自动悬浮经
- *    `setKeyboardMode(..., updatePreferences=true)` 落盘 —— 之后**每次**横屏
- *    （含每次投屏）都会以悬浮打开，直到被改回去。这解释了“有时”。
+ * 2. **Sticky float** (`KeyboardModeUtils.h(Context)`): what actually determines initial mode is the
+ *    persisted int `keyboard_mode_landscape` (selected for phone + landscape). Once written as 3 —
+ *    either manually by the user or persisted by auto-float via `setKeyboardMode(..., updatePreferences=true)` —
+ *    **every** subsequent landscape session (including every projection) opens in floating mode until
+ *    changed back.
  *
- * 关键点：设备形态取自机身而非渲染所在的 display，投屏时 Gboard 依旧报
- * `DEVICE_PHONE`，所以走的就是上面这套“手机 + 横屏”的键，和手机自己横屏用的是同一批。
+ * Key point: device form factor comes from the phone rather than the target display, so Gboard still
+ * reports `DEVICE_PHONE` during projection and uses the same "phone + landscape" keys as phone landscape.
  *
- * ## 修复方式
+ * ## How we fix it
  *
- * 只在**投屏进行中**（[ProjectionState]）拦截 Gboard 自己的 `SharedPreferences`
- * 读取结果：
- * - 键盘形态 int 读到 3（FLOATING）时改成 1（NORMAL）；
- * - `float_keyboard_in_*` 系列布尔读到 true 时改成 false，让 `ap()` 直接返回 false。
+ * Only **while projection is active** ([ProjectionState]), intercept Gboard's `SharedPreferences` reads:
+ * - When a keyboard mode int reads 3 (FLOATING), return 1 (NORMAL);
+ * - When `float_keyboard_in_*` booleans read true, return false so `ap()` returns false directly.
  *
- * 挂钩点选 framework 的 `android.app.SharedPreferencesImpl`，而不是 Gboard 混淆后的
- * `Preferences.get(...)`：键名是资源字符串、跨版本稳定，而混淆类名每个版本都在变；
- * 也就不必在输入法进程里为 89MB 的 APK 跑一次 DexKit（内存与启动延迟都不可接受）。
+ * Hook framework's `android.app.SharedPreferencesImpl` rather than Gboard's obfuscated `Preferences.get(...)`:
+ * key names are resource strings (stable across versions), whereas obfuscated class names change every
+ * release; this also avoids running DexKit on an 89MB APK inside the IME process.
  *
- * **不写入** Gboard 的任何 preference：用户在手机上自己选的悬浮键盘保持原样，
- * 断开投屏后立刻恢复；我们只改变投屏期间的读取结果。
+ * **Never writes** any Gboard preferences: the user's floating keyboard choice on the phone stays intact
+ * and resumes immediately when projection disconnects.
  *
- * 已知取舍：拦截发生在 preference 层，无法区分这次读取是为车机屏还是手机屏做的，
- * 因此**投屏期间手机自己横屏时也不会悬浮**。与护眼抑制（
- * [io.github.nitsuya.aa.display.util.EyeCareSuspender]）同一性质的全局取舍。
+ * Known trade-off: interception is at the preference layer and cannot distinguish whether a read is for
+ * the head unit or phone screen, so **phone landscape also won't float during projection** (same global
+ * trade-off as [io.github.nitsuya.aa.display.util.EyeCareSuspender]).
  *
- * 另一个已知边界：若 Gboard 在投屏开始**之前**就已经把形态缓存进
- * `KeyboardModeSwitcher`，且整个投屏期间没有触发过配置变化 / 形态刷新，
- * 那次缓存值不会被本 hook 覆盖。实际使用中键盘落到车机 VD 上必然伴随配置变化，
- * 因而会重新走一次读取。
+ * Another known boundary: if Gboard already cached the mode in `KeyboardModeSwitcher` **before**
+ * projection started and no config change / mode refresh occurs, that cached value won't be overridden.
+ * In practice, moving the keyboard onto the head unit VD triggers a config change and re-reads.
  */
 object GboardImeHook : BaseHook() {
     override val tagName: String = "AAD_GboardImeHook"
 
     const val PACKAGE_GBOARD = "com.google.android.inputmethod.latin"
 
-    /** `KeyboardModeManager` 枚举：1=NORMAL 2=ONE_HANDED 3=FLOATING 4=SPLIT。 */
+    /** `KeyboardModeManager` enum: 1=NORMAL 2=ONE_HANDED 3=FLOATING 4=SPLIT. */
     private const val MODE_NORMAL = 1
     private const val MODE_FLOATING = 3
 
     /**
-     * 当前 / 上一次键盘形态的持久化键（`KeyboardModePrefUtils.a()/c()` 按
-     * 设备形态 + 横竖屏选一个）。投屏走的是 `keyboard_mode_landscape`，
-     * 其余一并覆盖，避免“恢复上一形态”把悬浮又拉回来。
+     * Persisted keys for current / previous keyboard mode (`KeyboardModePrefUtils.a()/c()` picks one
+     * by form factor + orientation). Projection uses `keyboard_mode_landscape`; cover the rest too
+     * so "restore previous mode" doesn't bring floating back.
      */
     private val KEYBOARD_MODE_INT_KEYS = hashSetOf(
         "keyboard_mode",
@@ -89,7 +85,7 @@ object GboardImeHook : BaseHook() {
         "keyboard_mode_tablet_previous_keyboard_mode",
     )
 
-    /** 自动悬浮开关 + 默认悬浮开关，投屏期间一律视为关闭。 */
+    /** Auto-float + default-float toggles, treated as false during projection. */
     private val FLOAT_BOOL_KEYS = hashSetOf(
         "float_keyboard_in_landscape",
         "float_keyboard_in_freeform",
@@ -100,14 +96,14 @@ object GboardImeHook : BaseHook() {
         "tablet_float_keyboard_default",
     )
 
-    /** 配置开关缓存，避免每次 preference 读取都碰远端配置。 */
+    /** Cached config toggle to avoid hitting remote config on every preference read. */
     private var mEnabled: Boolean = true
 
-    /** [ProjectionState] 的本地缓存，由 ContentObserver 维护；热路径不走 ContentProvider。 */
+    /** Local cache of [ProjectionState] maintained by ContentObserver; avoids ContentProvider on hot path. */
     @Volatile
     private var mProjecting: Boolean = false
 
-    /** observe 注册失败时退化为直接查询（带节流），保证功能不因此完全失效。 */
+    /** Fall back to throttled direct queries if observe registration fails, keeping the feature working. */
     @Volatile
     private var mObserved: Boolean = false
 
@@ -147,8 +143,8 @@ object GboardImeHook : BaseHook() {
     }
 
     /**
-     * observe 失败时的兜底：最多每 2s 查一次 Settings.Global，
-     * 避免在每次 preference 读取上打 ContentProvider。
+     * Fallback when observe fails: query Settings.Global at most once every 2s
+     * to avoid hitting ContentProvider on every preference read.
      */
     private fun isProjecting(): Boolean {
         if (mObserved) return mProjecting

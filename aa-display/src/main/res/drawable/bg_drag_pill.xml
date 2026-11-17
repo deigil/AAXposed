@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 小窗顶栏中间的拖动指示胶囊 -->
+<!-- Drag indicator pill centered in the floating window top bar -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="?colorOnPrimaryContainer" />

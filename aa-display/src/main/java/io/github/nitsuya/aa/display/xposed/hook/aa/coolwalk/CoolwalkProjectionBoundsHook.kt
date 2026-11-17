@@ -64,7 +64,7 @@ object CoolwalkProjectionBoundsHook {
                 // → right black bar. Expand trX when the residual gap looks like one rail.
                 // The same residual also appears with blX already 0 (`blX=0, trX=1200` on a
                 // 1280 HU): the left rail was reclaimed upstream by content_bounds, but the
-                // window is still one rail narrow — that is 高德's right-edge black bar.
+                // window is still one rail narrow — that is AMap's right-edge black bar.
                 val expandRight = shouldExpandRightEdge(blX, trX, fullHint)
                 if (!expandLeft && !expandRight) return@hookBefore
                 if (expandLeft) {
@@ -130,7 +130,7 @@ object CoolwalkProjectionBoundsHook {
      * *is* the right-edge black bar. Covers the case [shouldExpandLeftInset] cannot see:
      * `blX=0, trX=1200` on a 1280 HU, i.e. the left rail was already reclaimed by the
      * content_bounds path but the window is still a content slot wide, so every projected app
-     * (高德 etc.) loses the right rail's worth of pixels while gearhead's own Coolwalk launcher —
+     * (AMap etc.) loses the right rail's worth of pixels while gearhead's own Coolwalk launcher —
      * drawn into the real full-width window — looks correct.
      *
      * Needs a real head-unit width from

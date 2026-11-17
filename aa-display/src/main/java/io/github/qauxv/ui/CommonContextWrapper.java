@@ -68,10 +68,10 @@ public class CommonContextWrapper extends ContextThemeWrapper {
         if (configuration != null) {
             mOverrideResources = base.createConfigurationContext(configuration).getResources();
         }
-        // 经 ModuleAssets 包装：modulePath 未初始化时它只记日志。直接调
-        // EzXHelperInit 会抛 UninitializedPropertyAccessException，而本构造器的调用点
-        // 之一在 system_server 主 looper 上（CoreManagerService.onCreateDisplay），
-        // 异常逃出去就是整机软重启。
+        // Wrapped via ModuleAssets: if modulePath is uninitialized it only logs. Calling EzXHelperInit
+        // directly would throw UninitializedPropertyAccessException, and one call site of this constructor
+        // is on system_server's main looper (CoreManagerService.onCreateDisplay), where an uncaught exception
+        // triggers a system soft reboot.
         ModuleAssets.addModuleAssetPath(getResources());
     }
 
