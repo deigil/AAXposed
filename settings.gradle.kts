@@ -4,5 +4,5 @@ pluginManagement {
     }
 }
 
-include(":aa-display", ":lib-stub")//, ":lib-aasdk"
-rootProject.name = "AADisplay"
+include(":aa-display", ":lib-stub")
+rootProject.name = "AAXposed"

@@ -3,6 +3,8 @@ package io.github.nitsuya.aa.display.xposed.hook.aa
 import android.content.ComponentName
 import android.content.Intent
 import android.content.SharedPreferences
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
@@ -53,13 +55,13 @@ object AaUiHook: AaHook() {
     override val tagName: String = CoolwalkHookEnv.TAG
 
     /**
-     * true：安装 Coolwalk 隐藏 UI 控件栈（车机侧边栏折叠 + 投屏铺满整块车机宽度），
-     *       控制方案保持在手机端悬浮窗（DisplayWindow / ACTION_SCREEN_CONTROL）。
-     * false：走旧行为，在车机侧边栏重建 home/全屏/返回/语音助手图标。
+     * true: install Coolwalk hide-UI-controls stack (collapse head unit sidebar + stretch projection to full HU width),
+     *       keeping controls in the phone floating window (DisplayWindow / ACTION_SCREEN_CONTROL).
+     * false: legacy behavior, rebuild home/fullscreen/back/voice-assist icons in the head unit sidebar.
      */
     private var hideAaUiControls: Boolean = true
 
-    /** Coolwalk 分支共享状态；仅在 [hideAaUiControls] 为 true 时填充。 */
+    /** Shared state for the Coolwalk branch; populated only when [hideAaUiControls] is true. */
     private val env = CoolwalkHookEnv()
 
     private lateinit var layoutInfoConstructor: Constructor<*>
@@ -69,6 +71,7 @@ object AaUiHook: AaHook() {
     private var resLayoutRightResourceId: Int = 0
 
     private var resLayoutGhFacetBarId: Int = 0
+    private var resLayoutGhFacetBarRhdId: Int = 0
     private var resIdStatusBarId: Int = 0
     private var resIdAssistantIconContainerId: Int = 0
     private var resIdAssistantIconId: Int = 0
@@ -79,8 +82,8 @@ object AaUiHook: AaHook() {
     private var canHookAssistantIcon: Boolean = false
 
     override fun isSupportProcess(processName: String): Boolean {
-        // Coolwalk 隐藏栈需要 :car（侧边栏/合成器）与 :projection（布局/投屏）两个进程；
-        // 旧的侧边栏重建只在 :projection 生效，由 isEnabled 再过滤一次。
+        // Coolwalk hide stack needs both :car (sidebar/compositor) and :projection (layout/projection);
+        // legacy sidebar rebuild only runs in :projection, filtered again in isEnabled.
         return processProjection == processName || processCar == processName
     }
 
@@ -89,7 +92,7 @@ object AaUiHook: AaHook() {
         env.autoOpenEnabled = AADisplayConfig.AutoOpen.get(config)
         env.forceRightAngle = AADisplayConfig.ForceRightAngle.get(config)
         if (hideAaUiControls) return true
-        // 旧行为不涉及 :car。
+        // Legacy behavior does not involve :car.
         return processProjection == processName
     }
 
@@ -97,19 +100,19 @@ object AaUiHook: AaHook() {
         if (hideAaUiControls) {
             loadDexClassCoolwalk(bridge, target)
         } else {
-            loadDexClassLegacy(bridge)
+            loadDexClassLegacy(bridge, target)
         }
     }
 
     // ------------------------------------------------------------------
-    // Coolwalk 隐藏 UI 控件（来自 Split-Lite 分支）
+    // Coolwalk hide UI controls (from Split-Lite branch)
     // ------------------------------------------------------------------
 
     private fun loadDexClassCoolwalk(bridge: DexKitBridge, target: HookTarget) {
-        // Compose 约束断言守卫：两个进程都要装，:car 会在下面提前 return。
+        // Compose constraints assertion guard: install in both processes before :car returns early below.
         CoolwalkComposeConstraintsGuard.resolve(bridge, target)
-        // 车机画布真值来源：:car 里没有 HU 尺寸的 VD，也收不到 :projection 的上报，
-        // 只能读 gearhead 自己的 DisplayParams。同样必须在 :car 的提前 return 之前。
+        // True HU canvas dimensions: :car has no HU-sized VD and cannot receive :projection reports,
+        // so it must read gearhead's own DisplayParams before :car returns early.
         CoolwalkHuScreenParamsHook.resolve(bridge, target)
 
         env.contentBoundsMethods = try {
@@ -210,12 +213,12 @@ object AaUiHook: AaHook() {
     }
 
     /**
-     * AA 17.8+：`CarSystemUiControllerService` 已删除，启动入口变成 `ProjectionContext`
-     * 单例上的 `startCarActivity(Intent, ActivityOptions)`。用 AA 自己的字符串常量定位，
-     * 避免挑到同类里那个空实现的 `(Intent)V` 兄弟方法。
+     * AA 17.8+: `CarSystemUiControllerService` was removed; the launch entry became
+     * `startCarActivity(Intent, ActivityOptions)` on the `ProjectionContext` singleton.
+     * Located via AA's own string constant to avoid picking the no-op `(Intent)V` sibling.
      *
-     * 来源：移植自 lagXkjy/AADisplay 分支 AADisplay-Split-Lite (v0.24#17.8-r1)
-     * 的 `AaUiHook.resolveStartMethodLive`（GPLv3）。
+     * Source: ported from lagXkjy/AADisplay branch AADisplay-Split-Lite (v0.24#17.8-r1)
+     * `AaUiHook.resolveStartMethodLive` (GPLv3).
      */
     private fun resolveProjectionLauncher(bridge: DexKitBridge, target: HookTarget) {
         val hits = try {
@@ -261,10 +264,10 @@ object AaUiHook: AaHook() {
 
     private fun hookCoolwalk(target: HookTarget) {
         env.loadProjectionResources()
-        // 必须在其它几何改写之前：0/1 px 容器会让 Compose 的 Constraints 断言炸掉进程。
+        // Must come before other geometry hooks: 0/1 px containers will crash Compose Constraints assertions.
         CoolwalkComposeConstraintsGuard.install()
-        // 必须在下面所有按宽度决策的钩子之前装：它负责把真正的车机宽度喂给协调器，
-        // 否则 :car 只知道内容槽宽度（HU − 侧边栏），右侧就会留一条黑边。
+        // Must install before all width-based hooks below: feeds the true HU width to the coordinator,
+        // otherwise :car only sees content-slot width (HU - sidebar), leaving a black bar on the right.
         CoolwalkHuScreenParamsHook.install(target.classLoader)
         CoolwalkDrawingSpecWiden.installGearhead(target.classLoader)
         CoolwalkProjectionBoundsHook.install(
@@ -279,7 +282,7 @@ object AaUiHook: AaHook() {
             if (env.canHookFacetBar) {
                 CoolwalkFacetChrome.install(env)
             }
-            // 不安装 AaCoolwalkHuTouchHook：触控/控制方案保留手机端悬浮窗。
+            // Do not install AaCoolwalkHuTouchHook: touch/control stays on the phone floating window.
             logDebug(tagName, "AaUiHook: Coolwalk hooks installed (:car)")
             return
         }
@@ -293,10 +296,10 @@ object AaUiHook: AaHook() {
     }
 
     // ------------------------------------------------------------------
-    // 旧行为：在车机侧边栏重建控件
+    // Legacy behavior: rebuild controls in the head unit sidebar
     // ------------------------------------------------------------------
 
-    private fun loadDexClassLegacy(bridge: DexKitBridge) {
+    private fun loadDexClassLegacy(bridge: DexKitBridge, target: HookTarget) {
         val classes = bridge.findClass {
             searchPackages = listOf("")
             matcher {
@@ -312,15 +315,17 @@ object AaUiHook: AaHook() {
         if (classes.isEmpty() || classes.size > 1) {
             throw NoSuchMethodException("AaUiHook: not found LayoutInfo class：${classes.size}")
         }
-        layoutInfoConstructor = resolveLayoutInfoConstructor(classes[0].name)
+        env.layoutInfoConstructors = env.resolveLayoutInfoConstructors(classes[0].name)
+        layoutInfoConstructor = env.layoutInfoConstructors.first()
 
-        try{
-            startMethod = loadClass("com.google.android.projection.gearhead.service.CarSystemUiControllerService").staticMethod("a", null, argTypes(Intent::class.java))
-        } catch (e: Throwable){
-            log(tagName,  "AaUiHook: not found CarSystemUiControllerService.a static method", e)
+        env.startMethod = env.resolveCarStartActivityMethod()
+        startMethod = env.startMethod
+        if (env.startMethod == null) {
+            resolveProjectionLauncher(bridge, target)
         }
 
         resLayoutGhFacetBarId = InitFields.appContext.resources.getIdentifier("gh_coolwalk_vertical_facet_bar", "layout", InitFields.appContext.packageName)
+        resLayoutGhFacetBarRhdId = InitFields.appContext.resources.getIdentifier("gh_coolwalk_vertical_facet_bar_rhd", "layout", InitFields.appContext.packageName)
         resIdStatusBarId = getIdByName("status_bar")
         resIdAssistantIconContainerId = getIdByName("assistant_icon_container")
         resIdAssistantIconId = getIdByName("assistant_icon")
@@ -348,7 +353,7 @@ object AaUiHook: AaHook() {
                 "AaUiHook: skip facet-bar override, missing resources: facet=$resLayoutGhFacetBarId, status=$resIdStatusBarId, launcherContainer=$resIdLauncherAndDashboardIconContainerId, launcherIcon=$resIdLauncherAndDashboardIconId"
             )
         }
-        // 助手图标在部分 AA 版本已被移除，缺失时降级：只保留方控触发语音助手
+        // Assistant icon was removed in some AA versions; degrade to steering wheel voice trigger only.
         canHookAssistantIcon = resIdAssistantIconContainerId != 0 && resIdAssistantIconId != 0
         if (!canHookAssistantIcon) {
             log(
@@ -364,55 +369,47 @@ object AaUiHook: AaHook() {
             hookCoolwalk(target)
             return
         }
-        // 仅旧行为需要接管 View 点击监听（侧边栏图标改写点击目标）。
-        hookBaseClick()
-        if (canHookLayout) {
-            hookLayout()
-        }
-        if (canHookFacetBar) {
-            hookFacetBar(config)
-        }
+        // Keep regular Android Auto UI & split-screen intact; AAXposed renders its own
+        // Home/Back/Recents bar inside AaDisplayActivity when open. Only keep AutoOpen
+        // and optional corner-radius overrides active here.
+        AaCoolwalkAutoOpenHook.install(env, target)
+        hookLayoutAutoOpenOnly()
         hookRadius(config)
     }
 
-    private fun hookLayout() {
-        layoutInfoConstructor.hookAfter { param -> log(tagName, param.thisObject.toString()) }
-        layoutInfoConstructor.hookBefore { param ->
-            if (param.args.size < 5) return@hookBefore
-            val layoutTypeCode = layoutTypeCode(param.args[3] ?: return@hookBefore) ?: return@hookBefore
-            // Skip cluster/auxiliary layouts to avoid overriding non-main surfaces.
-            if (layoutTypeCode in setOf(7, 8, 9)) return@hookBefore
-            val isRightHandDrive = (param.args[4] as? Boolean) == true
-            param.args[0] = if (isRightHandDrive) resLayoutRightResourceId else resLayoutLeftResourceId
-            // Force canonical vertical rail for LHD/RHD.
-            setLayoutTypeArg(param.args, if (isRightHandDrive) 3 else 2)
-            if (param.args.size > 5 && param.args[5] is Boolean) {
-                param.args[5] = true //hasVerticalRail
+    private fun hookLayoutAutoOpenOnly() {
+        val ctors = env.layoutInfoConstructors.ifEmpty { listOf(layoutInfoConstructor) }
+        ctors.forEach { ctor ->
+            ctor.hookAfter {
+                AaCoolwalkAutoOpenHook.scheduleAutoOpenIfNeeded(env, "layoutInfo")
             }
         }
     }
 
-    private fun resolveLayoutInfoConstructor(className: String): Constructor<*> {
-        // Keep only stable shape checks so this works across AA 16.4 and 16.6+.
-        val clazz = loadClass(className)
-        val fallback = clazz.declaredConstructors.firstOrNull { ctor ->
-            val p = ctor.parameterTypes
-            p.size >= 10
-                && p[0] == Int::class.javaPrimitiveType
-                && p[1] == Int::class.javaPrimitiveType
-                && p[2] == Int::class.javaPrimitiveType
-                && p[4] == Boolean::class.javaPrimitiveType
-                && p[5] == Boolean::class.javaPrimitiveType
-                && p[7] == Boolean::class.javaPrimitiveType
-                && p[8] == Boolean::class.javaPrimitiveType
-                && p[9] == Boolean::class.javaPrimitiveType
-                && !p[6].isPrimitive
-                && (p[3] == Int::class.javaPrimitiveType || p[3].isEnum)
-        } ?: throw NoSuchMethodException("AaUiHook: not found compatible LayoutInfo constructor for $className")
-
-        fallback.isAccessible = true
-        log(tagName, "AaUiHook: fallback constructor selected, paramCount=${fallback.parameterCount}, layoutTypeArg=${fallback.parameterTypes[3].name}")
-        return fallback
+    private fun hookLayout() {
+        val ctors = env.layoutInfoConstructors.ifEmpty { listOf(layoutInfoConstructor) }
+        ctors.forEach { ctor ->
+            ctor.hookAfter { param ->
+                log(tagName, param.thisObject.toString())
+                AaCoolwalkAutoOpenHook.scheduleAutoOpenIfNeeded(env, "layoutInfo")
+            }
+            ctor.hookBefore { param ->
+                if (param.args.size < 5) return@hookBefore
+                val layoutTypeCode = layoutTypeCode(param.args[3] ?: return@hookBefore) ?: return@hookBefore
+                // Skip cluster/auxiliary layouts to avoid overriding non-main surfaces.
+                if (layoutTypeCode in setOf(7, 8, 9)) return@hookBefore
+                val isRightHandDrive = (param.args[4] as? Boolean) == true
+                param.args[0] = if (isRightHandDrive) resLayoutRightResourceId else resLayoutLeftResourceId
+                // Force canonical vertical rail for LHD/RHD.
+                setLayoutTypeArg(param.args, if (isRightHandDrive) 3 else 2)
+                if (param.args.size > 5 && param.args[5] is Boolean) {
+                    param.args[5] = true //hasVerticalRail
+                }
+                if (param.args.size >= 11 && param.args[6] is Boolean && param.args[7] != null && !param.args[7]!!.javaClass.isPrimitive) {
+                    param.args[6] = false // railOrientationFollowsRailWidget = false
+                }
+            }
+        }
     }
 
     private fun layoutTypeCode(raw: Any): Int? {
@@ -450,7 +447,8 @@ object AaUiHook: AaHook() {
             && parameterTypes[1] == ViewGroup::class.java // root
             && parameterTypes[2] == Boolean::class.javaPrimitiveType // attachToRoot
         }.hookAfter { param ->
-            if (param.args[0] as Int != resLayoutGhFacetBarId) {
+            val inflatedLayoutId = param.args[0] as Int
+            if (inflatedLayoutId != resLayoutGhFacetBarId && (resLayoutGhFacetBarRhdId == 0 || inflatedLayoutId != resLayoutGhFacetBarRhdId)) {
                 return@hookAfter
             }
             val resultViewGroup = param.result as ViewGroup? ?: return@hookAfter //androidx.constraintlayout.widget.ConstraintLayout
@@ -469,14 +467,20 @@ object AaUiHook: AaHook() {
             }
             val aaFacetBar = layoutInflater.inflate(R.layout.aa_facet_bar, resultViewGroupParent, false) as ConstraintLayout
             if(autoOpen){
+                AaCoolwalkAutoOpenHook.scheduleAutoOpenIfNeeded(env, "facet-bar")
                 aaFacetBar.post {
                     runMain {
                         delay(1000)
                         try{
-                            startMethod?.invoke(null, Intent().apply {
+                            val launchIntent = Intent().apply {
                                 component = ComponentName(BuildConfig.APPLICATION_ID, AaActivityService::class.java.name)
                                 putExtra("android.intent.extra.PACKAGE_NAME", BuildConfig.APPLICATION_ID)
-                            })
+                            }
+                            if (startMethod != null) {
+                                startMethod?.invoke(null, launchIntent)
+                            } else {
+                                env.invokeStartCarActivity(launchIntent)
+                            }
                         } catch (e: Throwable) {
                             log(tagName, "CarSystemUiControllerService.a start app error", e)
                         }
@@ -484,10 +488,24 @@ object AaUiHook: AaHook() {
                 }
             }
             val createBtn: (resId: Int, block: View.() -> Unit) -> Int = { resId, block ->
+                val focusDrawable = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.argb(72, 255, 255, 255))
+                    setStroke(3, Color.WHITE)
+                }
                 val btn = ImageView(ctx).apply {
                     id = View.generateViewId()
                     layoutParams = ConstraintLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    isFocusable = true
+                    isFocusableInTouchMode = false
+                    isClickable = true
                     setImageResource(resId)
+                    setOnFocusChangeListener { v, hasFocus ->
+                        v.background = if (hasFocus) focusDrawable else null
+                        val targetScale = if (hasFocus) 1.15f else 1.0f
+                        v.scaleX = targetScale
+                        v.scaleY = targetScale
+                    }
                 }
                 block(btn)
                 aaFacetBar.addView(btn)
@@ -497,39 +515,38 @@ object AaUiHook: AaHook() {
                 resIdStatusBarId,
                 resIdLauncherAndDashboardIconContainerId
             )
-            val bottomIds = arrayListOf(
-                createBtn(R.drawable.ic_aa_home_44){
-                    val intentClick = Intent().apply {
-                        action = AABroadcastConst.ACTION_SCREEN_CONTROL
-                        putExtra(AABroadcastConst.EXTRA_ACTION, KeyEvent.KEYCODE_HOME)
-                    }
-                    setOnClickListener {
-                        ctx.sendBroadcast(intentClick)
-                    }
-                    setPadding(0, 5, 0, 5)
-                },
-                createBtn(R.drawable.ic_aa_fullscreen_44){
-                    val intentClick = Intent().apply {
-                        action = AABroadcastConst.ACTION_SCREEN_CONTROL
-                        putExtra(AABroadcastConst.EXTRA_ACTION, KeyEvent.KEYCODE_APP_SWITCH)
-                    }
-                    setOnClickListener {
-                        ctx.sendBroadcast(intentClick)
-                    }
-                    setPadding(0, 5, 0, 5)
-                },
-                createBtn(R.drawable.ic_aa_arrow_back_44){
-                    val intentClick = Intent().apply {
-                        action = AABroadcastConst.ACTION_SCREEN_CONTROL
-                        putExtra(AABroadcastConst.EXTRA_ACTION, KeyEvent.KEYCODE_BACK)
-                    }
-                    setOnClickListener {
-                        ctx.sendBroadcast(intentClick)
-                    }
-                    setPadding(0, 5, 0, 5)
-                },
-            )
-            // 恢复 nitsuya 的助手图标接管：点击原生助手图标改为触发自定义语音助手 Shell（小爱）
+            val homeBtnId = createBtn(R.drawable.ic_aa_home_44){
+                val intentClick = Intent().apply {
+                    action = AABroadcastConst.ACTION_SCREEN_CONTROL
+                    putExtra(AABroadcastConst.EXTRA_ACTION, KeyEvent.KEYCODE_HOME)
+                }
+                setOnClickListener {
+                    ctx.sendBroadcast(intentClick)
+                }
+                setPadding(0, 5, 0, 5)
+            }
+            val appSwitchBtnId = createBtn(R.drawable.ic_aa_fullscreen_44){
+                val intentClick = Intent().apply {
+                    action = AABroadcastConst.ACTION_SCREEN_CONTROL
+                    putExtra(AABroadcastConst.EXTRA_ACTION, KeyEvent.KEYCODE_APP_SWITCH)
+                }
+                setOnClickListener {
+                    ctx.sendBroadcast(intentClick)
+                }
+                setPadding(0, 5, 0, 5)
+            }
+            val backBtnId = createBtn(R.drawable.ic_aa_arrow_back_44){
+                val intentClick = Intent().apply {
+                    action = AABroadcastConst.ACTION_SCREEN_CONTROL
+                    putExtra(AABroadcastConst.EXTRA_ACTION, KeyEvent.KEYCODE_BACK)
+                }
+                setOnClickListener {
+                    ctx.sendBroadcast(intentClick)
+                }
+                setPadding(0, 5, 0, 5)
+            }
+            val bottomIds = arrayListOf(homeBtnId, appSwitchBtnId, backBtnId)
+            // Restore nitsuya's assistant icon takeover: tapping native assistant icon triggers custom voice assist shell
             val assistantIconView: View? = if (canHookAssistantIcon) resultViewGroup.findViewById(resIdAssistantIconId) else null
             val assistantContainerView: View? = if (canHookAssistantIcon) resultViewGroup.findViewById(resIdAssistantIconContainerId) else null
             if (assistantIconView != null && assistantContainerView != null) {
@@ -572,6 +589,29 @@ object AaUiHook: AaHook() {
                 set.connect(vId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
             }
             set.applyTo(aaFacetBar)
+            val focusOrder = buildList<View> {
+                aaFacetBar.findViewById<View>(resIdLauncherAndDashboardIconId)?.let {
+                    it.isFocusable = true
+                    add(it)
+                }
+                if (assistantIconView != null && bottomIds.contains(resIdAssistantIconContainerId)) {
+                    assistantIconView.isFocusable = true
+                    add(assistantIconView)
+                }
+                aaFacetBar.findViewById<View>(backBtnId)?.let { add(it) }
+                aaFacetBar.findViewById<View>(appSwitchBtnId)?.let { add(it) }
+                aaFacetBar.findViewById<View>(homeBtnId)?.let { add(it) }
+            }
+            focusOrder.forEachIndexed { index, view ->
+                if (index > 0) {
+                    view.nextFocusUpId = focusOrder[index - 1].id
+                }
+                if (index < focusOrder.lastIndex) {
+                    view.nextFocusDownId = focusOrder[index + 1].id
+                }
+            }
+            resultViewGroup.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+            resultViewGroup.isFocusable = false
             resultViewGroup.visibility = View.GONE
             aaFacetBar.addView(resultViewGroup)
             param.result = aaFacetBar

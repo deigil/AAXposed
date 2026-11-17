@@ -30,8 +30,8 @@ abstract class AaHook {
     abstract fun isSupportProcess(processName: String) : Boolean
 
     /**
-     * 配置级开关：即使 [isSupportProcess] 命中，也可以按配置整块跳过。
-     * 在 [loadDexClass] / [hook] 之前调用一次，供 hook 缓存自己的开关状态。
+     * Config-level switch: even if [isSupportProcess] matches, the entire hook can be skipped by config.
+     * Called once before [loadDexClass] / [hook] so the hook can cache its own toggle state.
      */
     open fun isEnabled(config: SharedPreferences?, processName: String): Boolean = true
     open fun loadDexClass(bridge: DexKitBridge, target: HookTarget) {}
@@ -77,13 +77,21 @@ object AndroidAuoHook : BaseHook() {
                 }
                 val measureTimeMillis = measureTimeMillis {
                     hooks.forEach { h ->
-                        h.loadDexClass(bridge, target)
+                        runCatching {
+                            h.loadDexClass(bridge, target)
+                        }.onFailure { e ->
+                            log(tagName, "${h.tagName} loadDexClass failed", e)
+                        }
                     }
                 }
                 log(tagName,"${target.processName} load class measure ${measureTimeMillis}ms")
             }
             hooks.forEach { h ->
-                h.hook(config, target)
+                runCatching {
+                    h.hook(config, target)
+                }.onFailure { e ->
+                    log(tagName, "${h.tagName} hook failed", e)
+                }
             }
         }
     }

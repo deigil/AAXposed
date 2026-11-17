@@ -30,9 +30,9 @@ class Application: android.app.Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // 旧框架路径：hook 侧用 XSharedPreferences 读这份本地 xml，需要 others 可读。
+        // Legacy framework path: hook side reads this local xml via XSharedPreferences, requires world-readable.
         SharedPreferencesAccess.makeReadableForHooks(this, AADisplayConfig.ConfigName)
-        // 现代 API 路径：hook 侧读框架守护进程里的远端配置，本地改动在这里镜像过去。
+        // Modern API path: hook side reads remote config from the framework daemon; local changes are mirrored here.
         RemoteConfigMirror.install(this)
         DynamicColors.applyToActivitiesIfAvailable(this)
     }

@@ -15,13 +15,13 @@ import io.github.nitsuya.aa.display.R
 import io.github.nitsuya.aa.display.model.RecentTaskInfo
 
 /**
- * 多任务列表适配器，两种条目形态：
- * - 快照模式（[iconMode] = false，车机端 AaRecentTaskFragment）：图标 + 名称 + 任务快照；
- * - 图标模式（[iconMode] = true，手机端镜像小窗）：只有图标 + 名称。小窗是
- *   wrap_content 的浮窗，9:16 的快照会把条目撑得比车机画面还高，导致面板溢出卡片、
- *   看起来像“错位”；而且小窗缩放后快照根本看不清，所以这里直接不加载快照。
+ * Recents list adapter with two item modes:
+ * - Snapshot mode ([iconMode] = false, head unit AaRecentTaskFragment): icon + name + task snapshot;
+ * - Icon mode ([iconMode] = true, phone mirror floating window): icon + name only. The floating window
+ *   is wrap_content, so 9:16 snapshots would stretch items taller than the head unit screen and overflow
+ *   the card; snapshots are also unreadable when scaled down, so we skip loading them here.
  *
- * 两套布局都提供 iv_icon / tv_name，快照模式额外有 cl_item / iv_snapshot。
+ * Both layouts provide iv_icon / tv_name; snapshot mode additionally has cl_item / iv_snapshot.
  */
 class DisplayRecyclerViewAdapter(
       private val recyclerView: RecyclerView

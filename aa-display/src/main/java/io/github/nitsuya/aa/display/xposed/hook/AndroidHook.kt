@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.pm.IPackageManager
 import android.content.res.Configuration
+import android.graphics.Rect
+import android.os.Binder
 import android.os.Build
 import android.view.Display
 import com.github.kyuubiran.ezxhelper.utils.*
@@ -15,6 +17,8 @@ import io.github.nitsuya.aa.display.xposed.BridgeService
 import io.github.nitsuya.aa.display.xposed.CoreManagerService
 import io.github.nitsuya.aa.display.xposed.log
 import io.github.qauxv.util.Initiator
+import java.lang.reflect.Method
+import java.util.concurrent.ConcurrentHashMap
 
 object AndroidHook : BaseHook() {
     override val tagName: String = "AAD_AndroidHook"
@@ -175,6 +179,7 @@ object AndroidHook : BaseHook() {
     }
     object FuckAppUseApplicationContext {
         private val appInitUseDisplay: HashMap<String, Int> = hashMapOf()
+        private val appInitUseDisplayUid: MutableSet<Int> = ConcurrentHashMap.newKeySet()
         private val activityTaskManagerService_startProcessAsync by lazy {
             if(!IsSystemEnv) return@lazy null
             try{
@@ -197,9 +202,40 @@ object AndroidHook : BaseHook() {
                 null
             }
         }
+        private val displayManagerService_getDisplayInfo by lazy {
+            if(!IsSystemEnv) return@lazy null
+            try {
+                findMethod("com.android.server.display.DisplayManagerService\$BinderService") {
+                    name == "getDisplayInfo" && parameterCount == 1 && parameterTypes[0] == Int::class.javaPrimitiveType
+                }
+            } catch (e: Throwable) {
+                log(tagName, "FuckAppUseAppContext DisplayManagerService.getDisplayInfo method", e)
+                null
+            }
+        }
+        private val windowManagerService_attachWindowContextToDisplayArea by lazy {
+            if(!IsSystemEnv) return@lazy emptyList()
+            try {
+                findAllMethods("com.android.server.wm.WindowManagerService") {
+                    name == "attachWindowContextToDisplayArea"
+                }
+            } catch (e: Throwable) {
+                log(tagName, "FuckAppUseAppContext WindowManagerService.attachWindowContextToDisplayArea method", e)
+                emptyList()
+            }
+        }
 
         private var activityTaskManagerService_startProcessAsync_hook : XC_MethodHook.Unhook? = null
         private var applicationThread_bindApplication_hook : XC_MethodHook.Unhook? = null
+        private var displayManagerService_getDisplayInfo_hook : XC_MethodHook.Unhook? = null
+        private var windowManagerService_attachWindowContextToDisplayArea_hooks : List<XC_MethodHook.Unhook> = emptyList()
+
+        private fun shouldRedirectDefaultDisplay(callingUid: Int): Boolean {
+            if (callingUid <= 10000) return false
+            if (CoreManagerService.getDisplayId() == Display.INVALID_DISPLAY) return false
+            return callingUid == CoreManagerService.getLauncherUid() || appInitUseDisplayUid.contains(callingUid)
+        }
+
         fun hook(){
             unHook()
             activityTaskManagerService_startProcessAsync_hook  = activityTaskManagerService_startProcessAsync?.hookBefore { param ->
@@ -207,102 +243,147 @@ object AndroidHook : BaseHook() {
                     val activityRecord = param.args[0]
                     val displayId = activityRecord.invokeMethod("getDisplayId") as Int
                     val packageName = activityRecord.getObject("packageName") as String
+                    val uid = runCatching { activityRecord.invokeMethod("getUid") as? Int }.getOrNull()
                     if(displayId == 0){
                         if(appInitUseDisplay.containsKey(packageName)){
                             appInitUseDisplay.remove(packageName)
                         }
+                        if (uid != null && uid != CoreManagerService.getLauncherUid()) {
+                            appInitUseDisplayUid.remove(uid)
+                        }
                         return@hookBefore
                     }
                     appInitUseDisplay[packageName] = displayId
+                    if (uid != null) {
+                        appInitUseDisplayUid.add(uid)
+                    }
                 } catch (e: Exception) {
                     log(tagName, "activityTaskManagerService_startProcessAsync Hook Exception", e)
                 }
             }
             applicationThread_bindApplication_hook = applicationThread_bindApplication?.hookBefore { param ->
                 try {
-                    val configuration = param.args[15]
-                    if(configuration !is Configuration){
-                        return@hookBefore
-                    }
+                    val configuration = param.args.firstOrNull { it is Configuration } as? Configuration
+                        ?: return@hookBefore
                     val packageName = (param.args[0] as String).run {
                         this.substringBeforeLast(":")
                     }
-                    if(appInitUseDisplay.containsKey(packageName)){
+                    if(appInitUseDisplay.containsKey(packageName) || packageName == CoreManagerService.getLauncherPackage()){
                         val densityDpi = CoreManagerService.getDensityDpi()
-                        if(densityDpi != 0){
+                        if(densityDpi > 0){
                             configuration.densityDpi = densityDpi
+                        }
+                        val width = CoreManagerService.getDisplayWidth()
+                        val height = CoreManagerService.getDisplayHeight()
+                        if (width > 0 && height > 0 && densityDpi > 0) {
+                            val density = densityDpi / 160f
+                            val wDp = (width / density).toInt().coerceAtLeast(1)
+                            val hDp = (height / density).toInt().coerceAtLeast(1)
+                            configuration.orientation = if (width >= height) {
+                                Configuration.ORIENTATION_LANDSCAPE
+                            } else {
+                                Configuration.ORIENTATION_PORTRAIT
+                            }
+                            configuration.screenWidthDp = wDp
+                            configuration.screenHeightDp = hDp
+                            configuration.smallestScreenWidthDp = minOf(wDp, hDp)
+                            val winCfg = configuration.getObjectOrNull("windowConfiguration")
+                            if (winCfg != null) {
+                                val bounds = Rect(0, 0, width, height)
+                                runCatching { winCfg.invokeMethod("setBounds", args(bounds), argTypes(Rect::class.java)) }
+                                runCatching { winCfg.invokeMethod("setAppBounds", args(bounds), argTypes(Rect::class.java)) }
+                                runCatching { winCfg.invokeMethod("setMaxBounds", args(bounds), argTypes(Rect::class.java)) }
+                            }
                         }
                     }
                 } catch (e: Exception) {
                     log(tagName, "applicationThread_bindApplication Hook Exception", e)
                 }
             }
+            displayManagerService_getDisplayInfo_hook = displayManagerService_getDisplayInfo?.hookBefore { param ->
+                val reqDisplayId = param.args[0] as? Int ?: return@hookBefore
+                if (reqDisplayId != Display.DEFAULT_DISPLAY) return@hookBefore
+                if (!shouldRedirectDefaultDisplay(Binder.getCallingUid())) return@hookBefore
+                val targetDisplayId = CoreManagerService.getDisplayId()
+                if (targetDisplayId != Display.INVALID_DISPLAY) {
+                    param.args[0] = targetDisplayId
+                }
+            }
+            windowManagerService_attachWindowContextToDisplayArea_hooks =
+                windowManagerService_attachWindowContextToDisplayArea.mapNotNull { method ->
+                    val paramTypes = method.parameterTypes
+                    val displayIdIndex = paramTypes.indexOfLast { it == Int::class.javaPrimitiveType }
+                    if (displayIdIndex < 0) return@mapNotNull null
+                    method.hookBefore { param ->
+                        val reqDisplayId = param.args.getOrNull(displayIdIndex) as? Int ?: return@hookBefore
+                        if (reqDisplayId != Display.DEFAULT_DISPLAY) return@hookBefore
+                        if (!shouldRedirectDefaultDisplay(Binder.getCallingUid())) return@hookBefore
+                        val targetDisplayId = CoreManagerService.getDisplayId()
+                        if (targetDisplayId != Display.INVALID_DISPLAY) {
+                            param.args[displayIdIndex] = targetDisplayId
+                        }
+                    }
+                }
         }
 
         fun unHook(){
             appInitUseDisplay.clear()
+            appInitUseDisplayUid.clear()
             activityTaskManagerService_startProcessAsync_hook?.apply { unhook() }
             activityTaskManagerService_startProcessAsync_hook = null
 
             applicationThread_bindApplication_hook?.apply { unhook() }
             applicationThread_bindApplication_hook = null
+
+            displayManagerService_getDisplayInfo_hook?.apply { unhook() }
+            displayManagerService_getDisplayInfo_hook = null
+
+            windowManagerService_attachWindowContextToDisplayArea_hooks.forEach { it.unhook() }
+            windowManagerService_attachWindowContextToDisplayArea_hooks = emptyList()
         }
 
     }
 
     /**
-     * 让投屏虚拟屏上的应用铺满整屏。
+     * Make apps on the projection virtual display fill the entire screen.
      *
-     * 竖屏应用（微信 `SCREEN_ORIENTATION_PORTRAIT`、bilibili 同理）落到这块横屏
-     * VirtualDisplay 上时，WM 的 fixed-orientation letterbox 会把它压成 590x720
-     * 的居中窄条（`bounds=Rect(345, 0 - 935, 720)`、`letterBoxed=true`），两侧留黑边。
+     * When portrait-only apps (WeChat `SCREEN_ORIENTATION_PORTRAIT`, Bilibili, etc.) launch on the
+     * landscape VirtualDisplay, WM's fixed-orientation letterbox squeezes them into a centered 590x720
+     * strip (`bounds=Rect(345, 0 - 935, 720)`, `letterBoxed=true`) with black bars on both sides.
      *
-     * 实测结论（1280x720/160 叠加屏 A/B）：
-     * - `IWindowManager.setIgnoreOrientationRequest(displayId, true/false)` 对虚拟屏
-     *   没有效果，两种取值下边界都是那条 590x720；虚拟屏默认已经是 true。
-     * - 把 activity 的 override orientation 去掉（compat `OVERRIDE_ANY_ORIENTATION_TO_USER`）
-     *   后边界立刻变成 `Rect(0, 0 - 1280, 720)`、`letterBoxed=false`。
+     * Tested findings (1280x720/160 overlay A/B):
+     * - `IWindowManager.setIgnoreOrientationRequest(displayId, true/false)` has no effect on virtual
+     *   displays; both values produce the same 590x720 bounds (virtual displays default to true).
+     * - Stripping the activity's override orientation (compat `OVERRIDE_ANY_ORIENTATION_TO_USER`)
+     *   immediately expands bounds to `Rect(0, 0 - 1280, 720)`, `letterBoxed=false`.
      *
-     * 所以这里直接在 [ActivityRecord.getOverrideOrientation] 出口把投屏屏上的固定朝向
-     * 改成 `SCREEN_ORIENTATION_UNSPECIFIED`，交给 display 自己的朝向决定布局。
-     * 不写任何 compat 覆盖、不碰应用自己的 `getRequestedOrientation()`，
-     * 断开投屏时 unhook 即恢复。
+     * Therefore, we override [ActivityRecord.getOverrideOrientation] to return
+     * `SCREEN_ORIENTATION_UNSPECIFIED` on the projection display, letting the display's own
+     * orientation drive layout without writing compat overrides or touching `getRequestedOrientation()`.
+     * Restores automatically on unhook when projection disconnects.
      *
-     * 全程只按 [CoreManagerService.getDisplayId] 比对，与分辨率无关
-     * （1280x720/160 的 DHU 和 800x533/170 的车机行为一致）。
+     * Matches purely by [CoreManagerService.getDisplayId], independent of resolution
+     * (1280x720/160 DHU and 800x533/170 head unit behave identically).
      */
     object AppFullscreenOnProjection {
         private const val SCREEN_ORIENTATION_UNSPECIFIED = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 
-        // Android 14+：ActivityRecord.getOverrideOrientation()，WM 解析朝向的唯一入口。
-        private val activityRecord_getOverrideOrientation by lazy {
-            if (!IsSystemEnv) return@lazy null
+        private val activityRecordOrientationMethods: List<Method> by lazy {
+            if (!IsSystemEnv) return@lazy emptyList()
             try {
-                findMethod("com.android.server.wm.ActivityRecord") {
-                    name == "getOverrideOrientation" && parameterCount == 0
+                findAllMethods("com.android.server.wm.ActivityRecord", findSuper = true) {
+                    (name == "getOverrideOrientation" && parameterCount == 0) ||
+                        (name == "getOrientation" &&
+                            (parameterCount == 0 ||
+                                (parameterCount == 1 && parameterTypes[0] == Int::class.javaPrimitiveType)))
                 }
             } catch (e: Throwable) {
-                log(tagName, "AppFullscreen ActivityRecord.getOverrideOrientation method", e)
-                null
+                log(tagName, "AppFullscreen ActivityRecord orientation methods", e)
+                emptyList()
             }
         }
 
-        // Android 12/13 回退：没有 getOverrideOrientation，朝向由 getOrientation(candidate) 汇总。
-        private val activityRecord_getOrientation by lazy {
-            if (!IsSystemEnv) return@lazy null
-            try {
-                findMethod("com.android.server.wm.ActivityRecord") {
-                    name == "getOrientation"
-                            && parameterCount == 1
-                            && parameterTypes[0] == Int::class.javaPrimitiveType
-                }
-            } catch (e: Throwable) {
-                log(tagName, "AppFullscreen ActivityRecord.getOrientation method", e)
-                null
-            }
-        }
-
-        private var hookOrientation: XC_MethodHook.Unhook? = null
+        private var hookOrientations: List<XC_MethodHook.Unhook> = emptyList()
 
         private fun isOnProjectionDisplay(activityRecord: Any?): Boolean {
             activityRecord ?: return false
@@ -317,26 +398,34 @@ object AndroidHook : BaseHook() {
 
         fun hook() {
             unHook()
-            val target = activityRecord_getOverrideOrientation ?: activityRecord_getOrientation
-            if (target == null) {
+            val targets = activityRecordOrientationMethods
+            if (targets.isEmpty()) {
                 log(tagName, "AppFullscreen: no orientation method found, skip")
                 return
             }
-            hookOrientation = target.hookAfter { param ->
-                try {
-                    if ((param.result as? Int) == SCREEN_ORIENTATION_UNSPECIFIED) return@hookAfter
-                    if (!isOnProjectionDisplay(param.thisObject)) return@hookAfter
-                    param.result = SCREEN_ORIENTATION_UNSPECIFIED
-                } catch (e: Throwable) {
-                    log(tagName, "AppFullscreen orientation Hook Exception", e)
-                }
+            hookOrientations = targets.mapNotNull { target ->
+                runCatching {
+                    target.hookAfter { param ->
+                        try {
+                            if ((param.result as? Int) == SCREEN_ORIENTATION_UNSPECIFIED) return@hookAfter
+                            if (!isOnProjectionDisplay(param.thisObject)) return@hookAfter
+                            param.result = SCREEN_ORIENTATION_UNSPECIFIED
+                        } catch (e: Throwable) {
+                            log(tagName, "AppFullscreen orientation Hook Exception", e)
+                        }
+                    }
+                }.getOrNull()
             }
-            log(tagName, "AppFullscreen hooked: ${target.declaringClass.simpleName}.${target.name}")
+            log(
+                tagName,
+                "AppFullscreen hooked ${hookOrientations.size} method(s): " +
+                    targets.joinToString { "${it.declaringClass.simpleName}.${it.name}(p${it.parameterCount})" }
+            )
         }
 
         fun unHook() {
-            hookOrientation?.apply { unhook() }
-            hookOrientation = null
+            hookOrientations.forEach { it.unhook() }
+            hookOrientations = emptyList()
         }
     }
 }

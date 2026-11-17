@@ -46,8 +46,8 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
             }
 
         /**
-         * system_server 侧的模块配置。来源由入口类注入（现代 API 走远端配置，
-         * 旧框架走 XSharedPreferences），这里只负责取。
+         * Module config on the system_server side. Source is injected by the entry class
+         * (remote config for modern API, XSharedPreferences for legacy); this only reads it.
          */
         val config: SharedPreferences? get() = HookPreferences.get()
 
@@ -90,6 +90,7 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
          * nor stay at HU−rail after the strip is gone.
          */
         private fun retryRailAwareSettle() {
+            if (!AADisplayConfig.HideAaUiControls.get(config)) return
             val current = mLockedDisplayProfile ?: return
             val adapter = mAaVirtualDisplayAdapter ?: return
             if (!hasSystemContext) return
@@ -168,6 +169,15 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
             newSession: Boolean
         ): DisplayProfile {
             val reported = sanitizeDisplayProfile(width, height, densityDpi)
+            if (!AADisplayConfig.HideAaUiControls.get(config)) {
+                cancelRailSettleRetry()
+                mLockedDisplayProfile = reported
+                log(
+                    TAG,
+                    "displayProfile direct(show-controls): ${reported.width}*${reported.height},${reported.densityDpi}"
+                )
+                return reported
+            }
             val railW = resolveRailWidthPx()
             val fullW = resolveObservedFullHuWidthPx(reported.width, reported.height)
             val settled = DisplayProfileSettle.settle(
@@ -244,8 +254,9 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
         }
 
         /**
-         * MIUI 护眼矩阵是全局的（display 0 → SF 广播全屏），投屏期间抑制、断开后还原。
-         * 软重连会重复进 [onCreateDisplay]，[EyeCareSuspender.suspend] 自身幂等。
+         * MIUI eye-care matrix is global (display 0 -> SurfaceFlinger broadcasts to all displays),
+         * so suppress during projection and restore on disconnect. Soft reconnects re-enter
+         * [onCreateDisplay]; [EyeCareSuspender.suspend] is idempotent.
          */
         private fun suspendEyeCareForProjection() {
             if (!hasSystemContext) return
@@ -271,9 +282,9 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
         }
 
         /**
-         * 投屏状态位，供普通应用进程里的 hook 读取
-         * （[io.github.nitsuya.aa.display.xposed.hook.GboardImeHook]）。
-         * 与护眼抑制同一对生命周期点，软重连重复调用保持幂等。
+         * Projection state flag for hooks in regular app processes
+         * ([io.github.nitsuya.aa.display.xposed.hook.GboardImeHook]).
+         * Shares the same lifecycle pair as eye-care suppression; idempotent across soft reconnects.
          */
         private fun markProjectionState(active: Boolean) {
             if (!hasSystemContext) return
@@ -284,82 +295,49 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
 
         @SuppressLint("UnspecifiedRegisterReceiverFlag")
         fun systemReady() {
-//            systemContext.registerReceiver(CoreBroadcastReceiver, IntentFilter().apply {
-//                addAction("com.google.android.gearhead.ASSISTANT_STATE_CHANGED")
-//                addAction("com.google.android.apps.auto.carservice.service.impl.NEARBY_ACTION_STOP_PROJECTION")
-//                addAction("com.google.android.gms.car.STARTUP_LATENCY_MEASUREMENT_EVENT")
-//                addAction("com.google.android.gms.car.FRX")
-//                addAction("com.google.android.gms.car.DISCONNECTED")
-//                addAction("com.google.android.gms.car.BIND_CAR_INPUT")
-//                addAction("com.google.android.gms.car.PROJECTION_STARTED")
-//                addAction("com.google.android.gms.car.PROJECTION_ENDED")
-//                addAction("com.google.android.gms.car.FIRST_ACTIVITY")
-//            })
-
             TipUtil.init(systemContext, "[AADisplay] ")
             Instances.init(systemContext)
 
-            // 提前把 EzXHelper 的 modulePath 解析好。悬浮窗（CommonContextWrapper）要用它，
-            // 而那条路径跑在 system_server 主 looper 上、只在插车时才走到 —— 放到这里做，
-            // 失败会在开机日志里直接暴露，而不是等到投屏那一刻。
+            // Pre-resolve EzXHelper's modulePath. The floating window (CommonContextWrapper) needs it,
+            // and that path runs on system_server's main looper only when connecting to the car —
+            // doing it here surfaces failures in boot logs instead of waiting until projection starts.
             log(TAG, "module assets ready: ${ModuleAssets.ensureModulePath()}")
 
-            // 上一次开机挂起后未能还原（进程被杀 / 直接重启）时，screen_paper_mode_enabled 会带着
-            // 我们置的值持久化下来使护眼一直失效，这里兜底回滚。
+            // If a previous boot's suspend was not restored (process killed / sudden reboot),
+            // screen_paper_mode_enabled would stay persisted with our value and disable eye-care;
+            // roll it back here as a fallback.
             EyeCareSuspender.recoverStaleSuspend(systemContext).also { r ->
                 if (r !is EyeCareSuspender.Result.NotActive) {
                     log(TAG, "eyeCare stale recover: $r")
                 }
             }
 
-            // 同理清掉可能残留的投屏状态位，避免第三方进程一直按“投屏中”行事。
+            // Similarly clear any leftover projection state flag so third-party processes don't stay in projection mode.
             markProjectionState(false)
-
-//            runIO {
-//                try{
-//                    com.google.android.gms.car.a::class.java.invokeStaticMethod("b", args(systemContext), argTypes(Context::class.java))
-//                    val classDynamicApiFactory = com.google.android.gms.car.a::class.java.field("a", true, Class::class.java).get(null)
-//                    val instance = PathClassLoader(
-//                        "/data/local/car_sdk_impl/sdk_impl.jar",
-//                        CarSdkClassLoader(this.javaClass.classLoader)
-//                    )
-//                    instance.loadClass("com.google.android.gms.car.internal.GmsVersionChecker").invokeStaticMethod("disableGmsVersionChecks")
-//                    instance.loadClass("com.google.android.gms.car.CarVersionUtils").invokeStaticMethod("versionCheck")
-//                    classDynamicApiFactory.field("instance", true, ClassLoader::class.java).set(null, instance)
-//                    val car = Car.createCar(systemContext, object: CarConnectionCallback(){
-//                        override fun onConnected(car: Car) {
-//                            log(TAG, "AA已连接")
-//                            val carManager = car.getCarManager("car_1p")
-//                            Companion.instance?.showToast("AA carManager: ${carManager!=null} -> ${carManager?.javaClass?.name}")
-//                            log(TAG, "AA carManager: ${carManager!=null} -> ${carManager?.javaClass?.name}") //CarFirstPartyManager
-//                            Companion.instance?.showToast("AA已连接")
-//                        }
-//                        override fun onDisconnected(car: Car) {
-//                            log(TAG, "AA已断开")
-//                            Companion.instance?.showToast("AA 已断开")
-//                        }
-//                    }).apply {
-//                        connect()
-//                        log(TAG, "AA初始化完成")
-//                        Companion.instance?.showToast("AA初始化完成")
-//                    }
-//                    if(car == null){
-//                        Companion.instance?.showToast("AA初始化失败")
-//                        log(TAG, "AA初始化失败")
-//                    }
-//                } catch (e: Throwable){
-//                    Companion.instance?.showToast("AA初始化异常:" + e.message)
-//                    log(TAG, "AA初始化异常", e)
-//                }
-//            }
         }
 
         fun getDisplayId(): Int{
             return mAaVirtualDisplayAdapter?.mDisplayId ?: Display.INVALID_DISPLAY
         }
 
+        fun getDisplayWidth(): Int {
+            return mAaVirtualDisplayAdapter?.mDisplayWidth ?: 0
+        }
+
+        fun getDisplayHeight(): Int {
+            return mAaVirtualDisplayAdapter?.mDisplayHeight ?: 0
+        }
+
         fun getDensityDpi(): Int{
             return mAaVirtualDisplayAdapter?.mDensityDpi ?: 0
+        }
+
+        fun getLauncherPackage(): String? {
+            return mAaVirtualDisplayAdapter?.launcherPackage
+        }
+
+        fun getLauncherUid(): Int {
+            return mAaVirtualDisplayAdapter?.mLauncherUid ?: -1
         }
     }
 
@@ -429,10 +407,10 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
                         profile.densityDpi
                     )
                 } catch (t: Throwable) {
-                    // 这里跑在 system_server 主 looper 上（runMain + Dispatchers.Main），
-                    // 且 GlobalScope 没有 CoroutineExceptionHandler：异常逃出去会走到线程的
-                    // 默认处理器，直接把 system_server 打死 → 整机软重启（je#system_server）。
-                    // 投屏画面本身由 VirtualDisplay 承载，悬浮窗建失败也不该拖垮系统。
+                    // This runs on system_server's main looper (runMain + Dispatchers.Main),
+                    // and GlobalScope has no CoroutineExceptionHandler: an uncaught exception
+                    // reaches the thread's default handler and crashes system_server (soft reboot).
+                    // Projection itself is hosted by VirtualDisplay; floating window failure shouldn't crash the system.
                     log(TAG, "onCreateDisplay failed after virtual display setup", t)
                 } finally {
                     mDisplayCreateInProgress = false
@@ -450,6 +428,7 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
 
     override fun onDestroyDisplay(){
         runMain {
+            mAaVirtualDisplayAdapter?.releaseDefaultHomeToPhoneIfNeeded("onDestroyDisplay")
             val finishDestroy = {
                 try {
                     mAaVirtualDisplayAdapter?.onDestroy()
@@ -533,49 +512,9 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
 
     override fun touch(event: MotionEvent) {
         runBlocking(Dispatchers.IO) {
-//        runMain {
             mAaVirtualDisplayAdapter?.onTouch(event)
         }
     }
-
-//    private var repairDownTime: Long = Long.MIN_VALUE
-//    fun touch2(event: MotionEvent, ratio: Float, repairDownTime: Long) {
-//        mAaVirtualDisplayAdapter?.run {
-//            val pointerCoords: Array<MotionEvent.PointerCoords?> = arrayOfNulls(event.pointerCount)
-//            val pointerProperties: Array<MotionEvent.PointerProperties?> = arrayOfNulls(event.pointerCount)
-//            val oldCoords = MotionEvent.PointerCoords()
-//            for (i in 0 until event.pointerCount) {
-//                val pointerProperty = MotionEvent.PointerProperties()
-//                event.getPointerCoords(i, oldCoords)
-//                event.getPointerProperties(i, pointerProperty)
-//                pointerCoords[i] = MotionEvent.PointerCoords()
-//                pointerCoords[i]!!.apply {
-//                    x = if(ratio == 1f) oldCoords.x else oldCoords.x / ratio
-//                    y = if(ratio == 1f) oldCoords.y else oldCoords.y / ratio
-//                }
-//                pointerProperties[i] = pointerProperty
-//            }
-//
-//            val newEvent = MotionEvent.obtain(
-//                if(repairDownTime == Long.MIN_VALUE) event.downTime else repairDownTime,
-//                if(repairDownTime == Long.MIN_VALUE) event.eventTime else SystemClock.uptimeMillis(),
-//                event.action,
-//                event.pointerCount,
-//                pointerProperties,
-//                pointerCoords,
-//                event.metaState,
-//                event.buttonState,
-//                event.xPrecision,
-//                event.yPrecision,
-//                event.deviceId,
-//                event.edgeFlags,
-//                event.source,
-//                event.flags
-//            )
-//            onTouch(event)
-//            newEvent.recycle()
-//        }
-//    }
 
     override fun toggleDisplayPower() {
         runIO {
@@ -609,60 +548,6 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
 
     @SuppressLint("RestrictedApi")
     override fun testCode(action: String){
-//        runMain {
-//            try {
-//                when (action) {
-//                    "displayPowerMode" -> {
-//                        try{
-//                            val internalDisplayToken = SurfaceControlHidden.getInternalDisplayToken()
-//                            SurfaceControlHidden.setDisplayPowerMode(internalDisplayToken, 0) // POWER_MODE_OFF-0  POWER_MODE_NORMAL-2
-//                        } catch (e: Throwable){
-//                            log(TAG, "DisplayToken", e)
-//                        }
-//                    }
-//                    "aaSdk" -> {
-//                        try{
-//                            com.google.android.gms.car.a::class.java.invokeStaticMethod("b", args(systemContext), argTypes(Context::class.java))
-//                            val classDynamicApiFactory = com.google.android.gms.car.a::class.java.field("a", true, Class::class.java).get(null)
-//                            val instance = PathClassLoader(
-//                                "/data/local/car_sdk_impl/sdk_impl.jar",
-//                                CarSdkClassLoader(this.javaClass.classLoader)
-//                            )
-//                            classDynamicApiFactory.field("instance", true, ClassLoader::class.java).set(null, instance)
-//                            instance.loadClass("com.google.android.gms.car.internal.GmsVersionChecker").invokeStaticMethod("disableGmsVersionChecks")
-//                            instance.loadClass("com.google.android.gms.car.CarVersionUtils").invokeStaticMethod("versionCheck")
-//                            val car = Car.createCar(systemContext, object: CarConnectionCallback(){
-//                                override fun onConnected(car: Car) {
-//                                    log(TAG, "AA已连接")
-//                                    TipUtil.showToast("AA已连接")
-////                                    val carManager = car.getCarManager("car_1p")
-////                                    showToast("AA carManager: ${carManager!=null} -> ${carManager?.javaClass?.name}")
-////                                    log(TAG, "AA carManager: ${carManager!=null} -> ${carManager?.javaClass?.name}") //CarFirstPartyManager
-//                                }
-//                                override fun onDisconnected(car: Car) {
-//                                    log(TAG, "AA已断开")
-//                                    TipUtil.showToast("AA 已断开")
-//                                }
-//                            }).apply {
-//                                connect()
-//                                log(TAG, "AA初始化完成")
-//                                TipUtil.showToast("AA初始化完成")
-//                            }
-//                            if(car == null){
-//                                TipUtil.showToast("AA初始化失败")
-//                                log(TAG, "AA初始化失败")
-//                            }
-//                        } catch (e: Throwable){
-//                            TipUtil.showToast("AA初始化异常:" + e.message)
-//                            log(TAG, "AA初始化异常", e)
-//                        }
-//                    }
-//                }
-//            }catch (e: Throwable){
-//                TipUtil.showToast("TestCode[$action]: ${e.message}")
-//                log(TAG, "TestCode[$action]:", e)
-//            }
-//        }
     }
 
     override fun toast(msg: String){

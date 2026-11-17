@@ -102,6 +102,9 @@ internal object DisplayProfileSettle {
     fun settle(reported: Size, railWidthPx: Int, fullHuWidthPx: Int = reported.width): Size {
         val h = reported.height.coerceAtLeast(1)
         val dpi = reported.densityDpi.coerceAtLeast(1)
+        if (fullHuWidthPx <= reported.width) {
+            return Size(reported.width.coerceAtLeast(1), h, dpi)
+        }
         val full = fullHuWidthPx.coerceAtLeast(reported.width).coerceAtLeast(1)
         if (railWidthPx <= 1) {
             // FacetBar starved, but CarActivity presentation may still be HU−rail.

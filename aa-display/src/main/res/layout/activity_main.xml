@@ -17,7 +17,7 @@
         android:paddingTop="8dp"
         android:paddingBottom="28dp">
 
-        <!-- 状态卡：miuix 里这类“大色块提示”是圆角矩形 + 图标在左 -->
+        <!-- Status card: in miuix this kind of large colored banner is a rounded rectangle with icon on the left -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/mcv_status"
             style="@style/Miuix.Card.Status"
@@ -50,7 +50,7 @@
                     android:fontFamily="sans-serif-medium"
                     android:textColor="?colorOnPrimary"
                     android:textSize="17sp"
-                    tools:text="模块已激活" />
+                    tools:text="Module Activated" />
 
                 <com.google.android.material.textview.MaterialTextView
                     android:id="@+id/tv_version"
@@ -67,7 +67,7 @@
             </RelativeLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- 设备信息 -->
+        <!-- Device Info -->
         <com.google.android.material.textview.MaterialTextView
             style="@style/Miuix.GroupTitle"
             android:text="@string/section_device_info" />
@@ -103,7 +103,7 @@
                         android:layout_height="wrap_content"
                         android:layout_alignParentEnd="true"
                         android:layout_centerVertical="true"
-                        tools:text="已获取" />
+                        tools:text="Granted" />
                 </RelativeLayout>
 
                 <View style="@style/Miuix.Divider" />
@@ -133,7 +133,7 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- 常用设置 -->
+        <!-- Common Settings -->
         <com.google.android.material.textview.MaterialTextView
             style="@style/Miuix.GroupTitle"
             android:text="@string/section_common_settings" />
@@ -200,7 +200,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="0dp"
-                        tools:text="系统默认桌面：com.miui.home" />
+                        tools:text="System default launcher: com.miui.home" />
 
                     <com.google.android.material.textfield.TextInputLayout
                         android:id="@+id/til_launcher_package"
@@ -228,7 +228,7 @@
                         android:layout_marginTop="6dp"
                         android:textSize="12sp"
                         android:visibility="gone"
-                        tools:text="该应用可以安全用于投屏"
+                        tools:text="This app is safe to use for projection"
                         tools:visibility="visible" />
 
                     <com.google.android.material.textfield.TextInputLayout

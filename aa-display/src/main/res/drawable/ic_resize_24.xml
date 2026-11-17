@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 右下角缩放把手：双向对角箭头 -->
+<!-- Bottom-right resize handle: bidirectional diagonal arrows -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"

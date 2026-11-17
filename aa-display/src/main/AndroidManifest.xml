@@ -2,11 +2,28 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools" >
 
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
     <queries>
         <package android:name="com.google.android.projection.gearhead" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VOICE_COMMAND" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.ASSIST" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VOICE_ASSIST" />
         </intent>
     </queries>
 
@@ -27,8 +44,8 @@
             android:name="xposeddescription"
             android:value="@string/xposeddescription" />
         <!--
-            Legacy 通道声明 API 82，避免 LSPosed 2.3.0 将模块识别为依赖已废弃的
-            New XSharedPreferences。现代通道由 META-INF/xposed/module.prop 管理。
+            Legacy channel declares API 82 to prevent LSPosed 2.3.0 from identifying the module
+            as relying on the deprecated New XSharedPreferences. Modern channel is managed by META-INF/xposed/module.prop.
         -->
         <meta-data
             android:name="xposedminversion"
@@ -57,19 +74,22 @@
             android:exported="false"
             android:label="@string/more_settings_title"
             android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
+            android:name=".ui.remote.RemoteActivity"
+            android:exported="false"
+            android:label="@string/remote_title" />
         <service
             android:name=".service.AaActivityService"
             android:enabled="true"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
-            android:label="AADisplay"
+            android:label="AAXposed"
             tools:ignore="ExportedService" >
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="com.google.android.gms.car.category.CATEGORY_PROJECTION" />
-                <category android:name="com.google.android.gms.car.category.CATEGORY_PROJECTION_NAVIGATION" />
                 <category android:name="com.google.android.gms.car.category.CATEGORY_PROJECTION_OEM" />
             </intent-filter>
         </service>

@@ -17,9 +17,9 @@ object SharedPreferencesAccess {
     }
 
     /**
-     * PreferenceManager 只接受一个 mode 常量，且在内部 getSharedPreferences 时才抛
-     * SecurityException（LSPosed 未激活时 MODE_WORLD_READABLE 在 N+ 上不被允许），
-     * 无法就地 catch。这里先探测一次，把可用的 mode 交给 PreferenceManager。
+     * PreferenceManager only accepts a single mode constant and throws SecurityException internally
+     * when calling getSharedPreferences (MODE_WORLD_READABLE is disallowed on N+ when LSPosed is
+     * inactive), which cannot be caught in place. Probe once here and pass the usable mode to PreferenceManager.
      */
     fun resolveModeForHooks(context: Context, name: String): Int {
         return try {

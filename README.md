@@ -1,90 +1,150 @@
-# AADisplay
+# AAXposed
 
-[![Fork](https://img.shields.io/badge/Fork-Nitsuya%2FAADisplay-blue?logo=github)](https://github.com/Nitsuya/AADisplay)
+[![Fork](https://img.shields.io/badge/Fork-deigil%2FAAXposed-blue?logo=github)](https://github.com/deigil/AAXposed)
 ![Xposed Module](https://img.shields.io/badge/Xposed-Module-blue)
 ![Android SDK min 31](https://img.shields.io/badge/Android%20SDK-%3E%3D%2031-brightgreen?logo=android)
 ![Android SDK target 36](https://img.shields.io/badge/Android%20SDK-target%2036-brightgreen?logo=android)
+![License GPLv3](https://img.shields.io/badge/License-GPLv3-lightgrey)
 
-把手机上的一块虚拟屏投到 Android Auto 车机上，车机整屏显示投屏内容，
-控制则留在手机端的悬浮小窗上。
+My personal fork of **AADisplay**: an Xposed/LSPosed module that projects a virtual display from
+the phone onto the car screen through Android Auto, so you can run apps that Android Auto does not
+normally allow (launchers, browsers, video, and so on).
 
-本仓库是 [Nitsuya/AADisplay](https://github.com/Nitsuya/AADisplay) 的 fork，
-面向 Android Auto 17.x 兼容性、TaskView 生命周期稳定性和投屏尺寸的正确性。
+This fork is tuned for **my own setup** and my own list of apps:
 
-## 功能
-
-- 任意应用投到车机屏幕，按车机实际分辨率铺满，无硬编码分辨率表。
-- 手机端 MIUI 小窗形态的控制面板：可拖动、可等比缩放、长按复位，卡片外触摸穿透。
-- 小窗内多任务面板，点击图标切换车机前台任务。
-- 隐藏车机自带 UI 控件，回收左侧导航轨后按整块车机宽度重新申请投屏画布。
-- 竖屏应用在车机上强制全屏，不被 letterbox 压成居中窄条。
-- 投屏期间抑制护眼模式、修正 Gboard 悬浮键盘、可选禁用 Waze / Google 地图的车机投屏。
-
-## 运行要求
-
-- Android 12 及以上（SDK 31+）
-- Root + LSPosed（或兼容的 Xposed 框架）
-- Android Auto（`com.google.android.projection.gearhead`）
-
-## 安装与配置
-
-1. 从 [Releases](https://github.com/erxm/AADisplay/releases) 下载 APK 并安装。
-2. 在 LSPosed 中为以下作用域启用模块：
-   - Android Auto
-   - 系统框架（System Framework）
-3. 重启设备。模块 hook 了 `system_server`，**每次更新模块后都必须重启才能生效**。
-4. 打开 AADisplay 配置：
-   - 自动打开（Auto Open）
-   - 默认启动应用、延迟销毁时间
-   - 连接 AA 时禁用 Waze / Google 地图
-   - 隐藏车机 UI 控件（`HideAaUiControls`，默认开）
-   - 投屏应用强制全屏（`ForceAppFullscreenOnProjection`，默认开）
-   - 投屏时挂起护眼模式（`SuspendEyeCareOnProjection`，默认开）
-   - 修正 Gboard 悬浮键盘（`FixGboardFloatingIme`，默认开）
-
-## 测试环境
-
-当前版本 `0.24#17.2-e2`（versionCode `3016`）在以下环境实测通过：
-
-| 项目 | 版本 |
+| | |
 |---|---|
-| 系统 | HyperOS `3.0.307.6`（Android 16） |
-| Android Auto | `17.3.662854` |
-| Xposed 框架 | LSPosed |
-| 车机端 | DHU（Desktop Head Unit） |
+| Phone | Google Pixel 9 |
+| Android Auto | 17.9.x (updates via Play Store) |
+| Car | Mercedes-Benz E53 AMG (2019, MBUX) |
 
-其他机型、其他系统版本与真实车机未做验证。逐项验证记录见 [CHANGELOG.md](CHANGELOG.md)，
-各版本更新说明见 [docs/releases/](docs/releases)。
+It is a work in progress. Things that work for me may not work for you, and anything not listed
+under "Status" below has not been verified in the car.
 
-## 已知的系统限制
+> [!NOTE]
+> The original project and most of this fork's lineage are Chinese-language. The app UI now has an
+> English translation (`values-en`). `CHANGELOG.md` entries and the files under `docs/` are still
+> mostly in Chinese.
 
-以下两点由系统机制导致，不是模块缺陷：
+## Goals of this fork
 
-- **护眼模式**是 SurfaceFlinger 层的全局色彩矩阵，只作用于主屏后由 SF 广播到所有屏，
-  没有 per-display 排除接口，投屏画面必然跟着变黄。模块默认在投屏期间临时关闭护眼、
-  断开后按原值恢复；代价是投屏期间手机屏幕也暂时没有护眼效果。
-- **Gboard 悬浮键盘**：Gboard 的键盘形态取自持久化设置，而设备形态按机身判断
-  （投屏时仍是手机），投屏那块横屏虚拟屏因此命中「手机 + 横屏」这套键，键盘以悬浮形态打开。
-  模块默认只修正 Gboard 读到的值，不写入 Gboard 设置；代价是投屏期间手机横屏也不会悬浮。
+- **Usable in-car navigation.** Home / Back / Recents should work from the car's own input
+  (MBUX touchpad, touchscreen, steering wheel), without touching the phone.
+- **Settings you can pick from, not type into.** Choose a launcher, voice assistant, DPI preset and
+  so on from what is actually installed on the phone.
+- **My own app list.** Make it easy to choose which apps get projected and which stay on the phone.
+- **Stay current with Android Auto.** The hooks use DexKit to find Android Auto internals, so each
+  Android Auto release needs re-checking.
 
-## 编译
+## Features
+
+- Cast any app to the car screen, sized to the car's real resolution (no hard-coded resolution table).
+- Phone-side floating control window: draggable, resizable (long-press to reset), touch passes
+  through outside the card.
+- Task switcher inside the floating window to change the app in front on the car.
+- Optional: hide Android Auto's own left navigation rail and reclaim that space for the projection.
+- Portrait apps are forced to fill the landscape car screen instead of being letterboxed.
+- While projecting: suppress eye-care mode (MIUI/HyperOS), fix Gboard's floating keyboard,
+  optionally keep Waze / Google Maps off the car screen.
+- Settings pickers (new in this fork): DPI presets, installed voice assistants, each with a
+  "Custom…" fallback.
+
+## Requirements
+
+- Android 12 or newer (SDK 31+)
+- Root + LSPosed (or a compatible Xposed framework)
+- Android Auto (`com.google.android.projection.gearhead`)
+
+## Install and configure
+
+1. Build the APK (see [Building](#building)) or take one from this repository's Releases, and
+   install it.
+2. In LSPosed, enable the module for:
+   - Android Auto
+   - System Framework
+3. Reboot. The module hooks `system_server`, so **every module update needs a reboot**.
+4. Open AAXposed and configure:
+   - **Main screen:** auto open, projection launcher app, delayed-destroy time.
+   - **Advanced settings:** hide car UI controls, force app fullscreen, DPI, voice assistant,
+     Waze / Google Maps toggles, keyboard location, shell hooks.
+
+### About "Hide car UI controls"
+
+This option (`HideAaUiControls`, **on** by default) removes Android Auto's left rail and moves
+control to the phone's floating window. That means there are **no Home / Back / Recents buttons on
+the car screen**. If you want to drive it from the car, turn this option off. The older behaviour
+then rebuilds Home / Back / Recents buttons in the car sidebar. (That code path predates Android
+Auto 17.8, so it may not work on current versions.)
+
+> [!NOTE]
+> Some cars draw their own chrome next to the projection (for example a logo or a reserved strip).
+> That is done by the head unit, not by the phone, so this module cannot remove it.
+
+## Status
+
+| Area | State |
+|---|---|
+| Builds (`assembleDebug`) | Yes |
+| Settings pickers (DPI, voice assistant) | Built, not yet run on device |
+| English UI | Done |
+| Mercedes E53 / MBUX touchpad behaviour | Known issue, under investigation |
+| In-car Home / Back / Recents | Planned |
+| App-selection pickers (apps to disable, etc.) | Planned |
+
+Upstream testing was done on HyperOS 3 (Android 16), Android Auto 17.3, and the Desktop Head Unit.
+See [CHANGELOG.md](CHANGELOG.md) and [docs/releases/](docs/releases).
+
+## Known system limitations
+
+These come from how Android works, not from module bugs:
+
+- **Eye-care mode** is a global SurfaceFlinger color matrix applied to the main display and
+  broadcast to all displays; there is no per-display exclusion, so the projection turns yellow.
+  By default the module turns eye-care off during projection and restores it afterwards, so the
+  phone screen also loses eye-care meanwhile.
+- **Gboard floating keyboard:** Gboard picks its keyboard mode from persisted settings and the
+  device type (still "phone" while projecting), so the landscape virtual display hits the
+  "phone + landscape" keys and opens the keyboard floating. By default the module only corrects
+  the value Gboard reads and never writes Gboard settings. The cost is that the phone's own
+  landscape mode will not float while projecting.
+
+## Building
+
+Requires JDK 17+ (Android Studio's bundled JBR works) and the Android SDK.
 
 ```bash
 ./gradlew :aa-display:assembleDebug
 ./gradlew :aa-display:assembleRelease
 ```
 
-## 致谢
+On Windows without `JAVA_HOME` set:
 
-- 上游：[Nitsuya/AADisplay](https://github.com/Nitsuya/AADisplay) →
-  [Stashboy/AADisplay](https://github.com/Stashboy/AADisplay) → 本仓库。
-- Coolwalk facetbar / 媒体占位屏链路来自
-  [lagXkjy/AADisplay](https://github.com/lagXkjy/AADisplay/tree/AADisplay-Split-Lite)
-  的 `AADisplay-Split-Lite` 分支，作者 **qiang**，按路径 cherry-pick 引入，
-  每个提交保留原作者、原提交时间与原始 SHA；架构说明见
-  [docs/COOLWALK_FACETBAR.md](docs/COOLWALK_FACETBAR.md)。
-  其中车机侧触控接管刻意未引入 —— 本 fork 的控制方案是手机端悬浮小窗。
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+.\gradlew.bat :aa-display:assembleDebug
+```
 
-## 许可证
+The debug APK is written to `aa-display/build/outputs/apk/debug/`.
 
-继承上游，见 [LICENSE](LICENSE)。
+## Architecture notes
+
+How Android Auto's Coolwalk left rail ("FacetBar") is reclaimed, and how the resolution is
+settled on reconnect, is described in [docs/COOLWALK_FACETBAR.md](docs/COOLWALK_FACETBAR.md)
+(Chinese).
+
+## Credits
+
+This is a fork of a chain of forks. All credit to the original authors:
+
+- Upstream: [Nitsuya/AADisplay](https://github.com/Nitsuya/AADisplay) →
+  [Stashboy/AADisplay](https://github.com/Stashboy/AADisplay) →
+  [erxm/AADisplay](https://github.com/erxm/AADisplay) → this repository.
+- The Coolwalk facetbar and media-placeholder logic comes from the `AADisplay-Split-Lite` branch of
+  [lagXkjy/AADisplay](https://github.com/lagXkjy/AADisplay/tree/AADisplay-Split-Lite),
+  by **qiang**, cherry-picked by path with original authorship preserved. The head-unit touch
+  takeover from that branch was deliberately not included in the parent fork; bringing in-car
+  control back is one of the goals here.
+
+## License
+
+GPLv3, inherited from upstream. See [LICENSE](LICENSE).

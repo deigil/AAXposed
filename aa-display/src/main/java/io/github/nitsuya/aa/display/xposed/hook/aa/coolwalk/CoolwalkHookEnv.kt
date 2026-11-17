@@ -24,8 +24,8 @@ class CoolwalkHookEnv {
     var startMethod: Method? = null
 
     /**
-     * 17.8+：启动入口是 `ProjectionContext` 单例上的实例方法，需要同名类里
-     * 返回自身的无参静态 getter 才能拿到 receiver。≤17.4 的 SysUi 静态方法为 null。
+     * 17.8+: launch entry is an instance method on the `ProjectionContext` singleton, requiring a
+     * static no-arg getter on the same class to obtain the receiver. Null for <=17.4 SysUi static method.
      */
     var startSingletonGetter: Method? = null
     @Volatile var hasVerticalRailField: Field? = null
@@ -56,9 +56,9 @@ class CoolwalkHookEnv {
     @Volatile var mLastProjectionConfigRewrite: String? = null
 
     var mAutoOpenSessionAtMs = 0L
-    /** 对应 AADisplayConfig.AutoOpen：false 时不主动拉起 AADisplay，只做几何调整。 */
+    /** Maps to AADisplayConfig.AutoOpen: when false, only adjust geometry without proactively launching AADisplay. */
     var autoOpenEnabled: Boolean = true
-    /** 对应 AADisplayConfig.ForceRightAngle：仅控制圆角（decoration radius），不影响左右留白回收。 */
+    /** Maps to AADisplayConfig.ForceRightAngle: only controls corner decoration radius, not side rail reclamation. */
     var forceRightAngle: Boolean = true
     @Volatile var mAaDisplayShownThisSession = false
     @Volatile var mAutoOpenArmed = false
@@ -135,17 +135,28 @@ class CoolwalkHookEnv {
         val clazz = loadClass(className)
         val matched = clazz.declaredConstructors.filter { ctor ->
             val p = ctor.parameterTypes
-            p.size >= 10 &&
+            val commonHeader = p.size >= 10 &&
                 p[0] == Int::class.javaPrimitiveType &&
                 p[1] == Int::class.javaPrimitiveType &&
                 p[2] == Int::class.javaPrimitiveType &&
+                (p[3] == Int::class.javaPrimitiveType || p[3].isEnum) &&
                 p[4] == Boolean::class.javaPrimitiveType &&
-                p[5] == Boolean::class.javaPrimitiveType &&
+                p[5] == Boolean::class.javaPrimitiveType
+            if (!commonHeader) return@filter false
+
+            val matchesLegacy10 = !p[6].isPrimitive &&
                 p[7] == Boolean::class.javaPrimitiveType &&
                 p[8] == Boolean::class.javaPrimitiveType &&
+                p[9] == Boolean::class.javaPrimitiveType
+
+            val matchesAa181 = p.size >= 11 &&
+                p[6] == Boolean::class.javaPrimitiveType &&
+                !p[7].isPrimitive &&
+                p[8] == Boolean::class.javaPrimitiveType &&
                 p[9] == Boolean::class.javaPrimitiveType &&
-                !p[6].isPrimitive &&
-                (p[3] == Int::class.javaPrimitiveType || p[3].isEnum)
+                p[10] == Boolean::class.javaPrimitiveType
+
+            matchesLegacy10 || matchesAa181
         }
         if (matched.isEmpty()) {
             throw NoSuchMethodException("AaUiHook: not found compatible LayoutInfo constructor for $className")
@@ -196,13 +207,12 @@ class CoolwalkHookEnv {
     }
 
     /**
-     * AA 17.8+：启动入口搬到了 `ProjectionContext` 单例的实例方法上，签名是
-     * `(Intent, ActivityOptions)V`。用 DexKit 按 AA 自己的字符串常量
-     * [PROJECTION_START_NEEDLE] 精确定位 —— 同类里还有个 `(Intent)V` 兄弟方法是
-     * 生命周期空实现，随手挑一个会拿到错的。
+     * AA 17.8+: launch entry moved to an instance method on the `ProjectionContext` singleton with
+     * signature `(Intent, ActivityOptions)V`. Located via DexKit using AA's own string constant
+     * [PROJECTION_START_NEEDLE] — there is a `(Intent)V` no-op lifecycle sibling in the same class.
      *
-     * 来源：移植自 lagXkjy/AADisplay 分支 AADisplay-Split-Lite (v0.24#17.8-r1)
-     * 的 `CoolwalkHookEnv.resolveProjectionLauncherStart`（GPLv3）。
+     * Source: ported from lagXkjy/AADisplay branch AADisplay-Split-Lite (v0.24#17.8-r1)
+     * `CoolwalkHookEnv.resolveProjectionLauncherStart` (GPLv3).
      */
     fun resolveProjectionLauncherStart(needleMethod: Method): Boolean {
         val hostClass = needleMethod.declaringClass
@@ -241,7 +251,7 @@ class CoolwalkHookEnv {
         return true
     }
 
-    /** 调用已解析的启动入口：静态（≤17.4）/ 单例实例（17.8+）。 */
+    /** Invoke the resolved launch entry: static (<=17.4) / singleton instance (17.8+). */
     fun invokeStartCarActivity(intent: Intent) {
         val method = startMethod ?: throw IllegalStateException("startMethod null")
         if (Modifier.isStatic(method.modifiers)) {
@@ -270,9 +280,9 @@ class CoolwalkHookEnv {
         const val TAG = "AAD_AaUiHook"
 
         /**
-         * DexKit needle：AA 17.8 里 ProjectionContext 启动器的字符串常量。
+         * DexKit needle: string constant for ProjectionContext launcher in AA 17.8.
          *
-         * 来源：lagXkjy/AADisplay 分支 AADisplay-Split-Lite (v0.24#17.8-r1)，GPLv3。
+         * Source: lagXkjy/AADisplay branch AADisplay-Split-Lite (v0.24#17.8-r1), GPLv3.
          */
         const val PROJECTION_START_NEEDLE = "startCarActivity(intent:%s, activityOptions:%s)"
 

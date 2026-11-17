@@ -3,21 +3,21 @@ package io.github.nitsuya.aa.display.xposed
 import android.content.SharedPreferences
 
 /**
- * 被 hook 进程侧的模块配置入口。
+ * Module config entry point on the hooked process side.
  *
- * 迁移到 libxposed 之前，每个 hook 各自 `XSharedPreferences(APPLICATION_ID, ConfigName)`
- * 再 `canRead()` / `reload()`。那套做法要求模块把 `aadisplay_config.xml` 设成 others 可读，
- * 正是 LSPosed 2.2.0 开始告警、2.3.0 计划移除的东西。
+ * Before migrating to libxposed, each hook created `XSharedPreferences(APPLICATION_ID, ConfigName)`
+ * and called `canRead()` / `reload()`. That required `aadisplay_config.xml` to be world-readable,
+ * which LSPosed 2.2.0 began warning on and 2.3.0 plans to remove.
  *
- * 现代 API 走 `XposedInterface.getRemotePreferences(group)`：配置存在框架守护进程的
- * SQLite 里，通过 Binder 读，进程内拿到的实现是**实时**的（框架会推变更），因此
- * 没有 `reload()` 的对应物。
+ * The modern API uses `XposedInterface.getRemotePreferences(group)`: config lives in the framework
+ * daemon's SQLite and is read over Binder; the in-process implementation is **real-time**
+ * (the framework pushes changes), so there is no `reload()` equivalent.
  *
- * 两种来源由入口类注入，hook 侧只认这里的 [get] / [latest]：
- * - [ModernInit] 注入 `getRemotePreferences`；
- * - 旧版 LSPosed 上的 [XposedInit] 注入 `XSharedPreferences` + 一个 `reload()` 刷新器。
+ * Both sources are injected by the entry class, and hooks only use [get] / [latest]:
+ * - [ModernInit] injects `getRemotePreferences`;
+ * - [XposedInit] on legacy LSPosed injects `XSharedPreferences` + a `reload()` refresher.
  *
- * 解析结果会缓存（含解析失败的 null），避免每次 hook 触发都做一次 IPC。
+ * The resolved result (including null on failure) is cached to avoid an IPC on every hook trigger.
  */
 object HookPreferences {
     private const val TAG = "AAD_HookPreferences"
@@ -32,10 +32,10 @@ object HookPreferences {
     private var resolved: Boolean = false
 
     /**
-     * 注入配置来源。入口类在分发任何 hook 之前调用。
+     * Inject config source. Called by the entry class before dispatching any hooks.
      *
-     * @param refresher 读取前的刷新动作。`XSharedPreferences` 需要 `reload()`；
-     *   远端配置是实时的，传 null。
+     * @param refresher Refresh action before reading. `XSharedPreferences` needs `reload()`;
+     *   remote config is real-time, so pass null.
      */
     @Synchronized
     fun install(
@@ -48,15 +48,15 @@ object HookPreferences {
         resolved = false
     }
 
-    /** 取配置；只解析一次，失败返回 null（各配置项自带默认值，功能不因此中断）。 */
+    /** Get config; resolved once, returns null on failure (each config item has a default so features keep working). */
     fun get(): SharedPreferences? {
         if (resolved) return cached
         return resolve()
     }
 
     /**
-     * 取配置并先刷新一次。legacy 下等于 `reload()`；现代 API 下与 [get] 等价。
-     * 用在原先显式 `reload()` 的那些位置。
+     * Get config and refresh once first. Under legacy this equals `reload()`; under modern API it equals [get].
+     * Used at sites that previously called `reload()` explicitly.
      */
     fun latest(): SharedPreferences? {
         val config = get() ?: return null

@@ -9,49 +9,49 @@ import android.os.SystemClock
 import android.provider.Settings
 
 /**
- * MIUI / HyperOS 护眼（纸质）模式被 `DisplayFeatureManagerService` 实现为 SF 侧的
- * **per-display colorTransformMatrix**，而 `getEffectedDisplayIndex()` 在非折叠机上
- * 恒返回 `[0]`，SF 再把该矩阵传播到**所有** display —— 包括 AA 投屏用的 VirtualDisplay。
- * 于是护眼一开，车机画面跟着变黄。
+ * MIUI / HyperOS eye-care (paper) mode is implemented by `DisplayFeatureManagerService` as a
+ * SurfaceFlinger **per-display colorTransformMatrix**, where `getEffectedDisplayIndex()` on
+ * non-foldables always returns `[0]`, and SF broadcasts that matrix to **all** displays — including
+ * the AA projection VirtualDisplay, tinting the head unit yellow when eye-care is on.
  *
- * MIUI 没有任何“排除某个 display”的接口：
- * - `projectionDisplayFlag` / `isCastMode` / `isScreenProjection` 不参与颜色变换
- *   （实测投屏 VD 已经是 `projectionDisplayFlag=1` 却照样带黄矩阵）；
- * - `read_apps_only` / `EffectScopeManager` 仅在 `IS_GREEN_MOUNTAIN_EYECARE_V3` 机型生效；
- * - framework 里没有 display 级 color matrix API（只有 per-layer
- *   `SurfaceControl$Transaction.setColorTransform`）。
+ * MIUI has no API to exclude a specific display:
+ * - `projectionDisplayFlag` / `isCastMode` / `isScreenProjection` do not participate in color
+ *   transforms (verified: projection VD already has `projectionDisplayFlag=1` yet still gets tinted);
+ * - `read_apps_only` / `EffectScopeManager` only take effect on `IS_GREEN_MOUNTAIN_EYECARE_V3` devices;
+ * - framework has no display-level color matrix API (only per-layer `SurfaceControl$Transaction.setColorTransform`).
  *
- * 也不能用 `screen_game_mode` 的 `mForceDisableEyeCare` 位：实测它会把
- * `setScreenEffect mode=3` ramp 到 0，但 **SF 矩阵不变**，画面依旧发黄。
+ * Nor can `screen_game_mode`'s `mForceDisableEyeCare` bit be used: it ramps `setScreenEffect mode=3`
+ * to 0, but **the SF matrix stays unchanged**, leaving the screen yellow.
  *
- * 因此唯一有效开关是 `Settings.System.screen_paper_mode_enabled`：置 0 时矩阵回到中性，
- * 置回 1 时按 `screen_paper_mode_level` 等原设置立即恢复（等级类键我们从不触碰）。
+ * Therefore the only effective toggle is `Settings.System.screen_paper_mode_enabled`: setting 0
+ * resets the matrix to neutral, and setting it back to 1 restores immediately per `screen_paper_mode_level`
+ * etc. (we never touch level keys).
  *
- * 代价：抑制是**全局**的 —— 投屏期间手机自己的屏幕也暂时没有护眼效果，
- * 设置里的护眼开关也会显示为关闭。这是 MIUI 实现决定的，没有 per-display 方案。
+ * Trade-off: suppression is **global** — during projection the phone's own screen also loses eye-care
+ * and Settings shows eye-care as off. This is dictated by MIUI's implementation.
  *
- * 生命周期：[suspend] 在 VD 创建时调用，[restore] 在 VD 销毁时调用；
- * 原值持久化在模块自有的 Settings.Global 键里，[recoverStaleSuspend] 在
- * `systemReady()` 兜底回滚“上一次开机中途被杀、没来得及 restore”的残留状态。
+ * Lifecycle: [suspend] is called when VD is created, [restore] when VD is destroyed;
+ * the original value is persisted in module-owned Settings.Global keys, and [recoverStaleSuspend]
+ * rolls back any leftover state in `systemReady()` if system_server was killed or rebooted mid-projection.
  */
 object EyeCareSuspender {
-    /** MIUI 护眼总开关，也是本机唯一能改变 SF colorTransformMatrix 的键。 */
+    /** MIUI eye-care master toggle, also the only key on this device that changes the SF colorTransformMatrix. */
     private const val KEY_PAPER_MODE_ENABLED = "screen_paper_mode_enabled"
 
-    /** 模块自有键：投屏前的护眼开关原值（-1 = 无挂起）。 */
+    /** Module-owned key: original eye-care toggle value before projection (-1 = not suspended). */
     const val SETTINGS_SAVED_PAPER_MODE = "aadisplay_eyecare_saved_paper_mode"
 
-    /** 模块自有键：挂起时刻的 uptime，用于跨开机残留识别。 */
+    /** Module-owned key: uptime when suspended, used to detect stale values across reboots. */
     const val SETTINGS_SUSPEND_UPTIME_MS = "aadisplay_eyecare_suspend_uptime_ms"
 
     private const val NONE = -1
 
     private val mHandler = Handler(Looper.getMainLooper())
 
-    /** 投屏期间监听护眼被重新打开（日程/用户手动），压回去并记下待还原值。 */
+    /** Watch for eye-care being re-enabled during projection (schedule/user), suppress it and record intended value. */
     private var mObserver: ContentObserver? = null
 
-    /** 结果只回报给调用方打日志，避免这里依赖 xposed 的 log。 */
+    /** Result is only returned to the caller for logging, avoiding xposed log dependencies here. */
     sealed class Result {
         object Disabled : Result()
         object Unsupported : Result()
@@ -64,8 +64,8 @@ object EyeCareSuspender {
     }
 
     /**
-     * 该机型是否有 MIUI 护眼实现。没有就完全不写任何键，
-     * 避免在原生 / 其他 OEM 上留下无意义的设置项。
+     * Whether this device has MIUI eye-care. If not, write no keys at all
+     * to avoid leaving meaningless settings on AOSP / other OEMs.
      */
     private fun isSupported(cr: ContentResolver): Boolean =
         runCatching { Settings.System.getString(cr, KEY_PAPER_MODE_ENABLED) != null }
@@ -78,9 +78,9 @@ object EyeCareSuspender {
         runCatching { Settings.Global.getInt(cr, SETTINGS_SAVED_PAPER_MODE, NONE) }.getOrDefault(NONE)
 
     /**
-     * Settings.Global 跨开机存活，而 [SystemClock.uptimeMillis] 每次开机归零：
-     * 存的 uptime 比现在大，就一定来自上一次开机
-     * （与 [CoolwalkRailStore.isCrossBootStale] 同一判据）。
+     * Settings.Global persists across reboots while [SystemClock.uptimeMillis] resets to 0 on boot:
+     * a stored uptime greater than now is guaranteed to be from a previous boot
+     * (same criterion as [CoolwalkRailStore.isCrossBootStale]).
      */
     private fun isCrossBootStale(cr: ContentResolver): Boolean {
         val saved = runCatching {
@@ -103,7 +103,7 @@ object EyeCareSuspender {
         }
     }
 
-    /** 投屏开始：关掉护眼总开关，记下原值。软重连会重复调用，保持幂等。 */
+    /** Projection started: turn off eye-care master toggle and save original value. Idempotent on soft reconnect. */
     fun suspend(context: Context, enabled: Boolean): Result {
         if (!enabled) return Result.Disabled
         return runCatching {
@@ -117,7 +117,7 @@ object EyeCareSuspender {
             }
             val original = readPaperMode(cr)
             if (original == 0) {
-                // 护眼本来就关着：不写任何键，断开时也无需还原。
+                // Eye-care is already off: write nothing, no restore needed on disconnect.
                 return Result.NothingToDo
             }
             writeSaved(cr, original)
@@ -127,7 +127,7 @@ object EyeCareSuspender {
         }.getOrElse { Result.Failed(it) }
     }
 
-    /** 投屏结束：写回挂起期间记录的“用户意图值”。 */
+    /** Projection ended: write back the recorded user-intended value. */
     fun restore(context: Context): Result {
         return runCatching {
             val cr = context.contentResolver
@@ -143,8 +143,8 @@ object EyeCareSuspender {
     }
 
     /**
-     * 开机兜底：上一次开机里挂起后没能 restore（system_server 被杀 / 直接重启），
-     * 护眼会一直停在关闭状态。`systemReady()` 里调用一次即可补回。
+     * Boot fallback: if suspended in a previous boot without restoring (system_server killed / reboot),
+     * eye-care would stay off permanently. Call once in `systemReady()` to restore it.
      */
     fun recoverStaleSuspend(context: Context): Result {
         return runCatching {
@@ -156,9 +156,9 @@ object EyeCareSuspender {
     }
 
     /**
-     * 护眼日程（`paper_mode_scheduler_type`）或用户手动可能在投屏中途把护眼打开，
-     * 车机会立刻变黄。这里压回 0，同时把“用户意图值”更新为 1，
-     * 断开投屏后按该意图恢复，不会吞掉用户的操作。
+     * An eye-care schedule (`paper_mode_scheduler_type`) or manual toggle may re-enable eye-care
+     * mid-projection, turning the head unit yellow immediately. Suppress it back to 0 and update
+     * the user-intended value to 1 so it restores on disconnect without swallowing user intent.
      */
     private fun startObserver(context: Context) {
         if (mObserver != null) return

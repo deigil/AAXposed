@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  miuix 风格的偏好项：背景透明（卡片由 MiuixCardDecoration 绘制），
-  行高舒展、标题 16sp、副标题 13sp 灰字。
+  miuix-style preference item: transparent background (card drawn by MiuixCardDecoration),
+  comfortable row height, 16sp title, 13sp gray summary.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"

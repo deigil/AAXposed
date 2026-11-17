@@ -17,16 +17,17 @@ import io.github.nitsuya.aa.display.xposed.hook.OtherHook
 import io.github.nitsuya.aa.display.xposed.hook.WazeHook
 
 /**
- * 旧版 Xposed / LSPosed 的兼容入口，由 `assets/xposed_init` 指名。
+ * Compatibility entry point for legacy Xposed / LSPosed, referenced by `assets/xposed_init`.
  *
- * 现役框架走 [ModernInit]（`META-INF/xposed/java_init.list`）。这个类保留是为了
- * 在只认 legacy 通道的旧框架（如上游 LSPosed 1.9.2）上仍能加载：它们的
- * `getModuleApkPath` 接受任一标记，但 modern 入口要的两参构造器与
- * Vector 要的无参构造器互斥，只能靠两个入口类分别覆盖。
+ * Active frameworks use [ModernInit] (`META-INF/xposed/java_init.list`). This class is kept so
+ * legacy frameworks that only recognize the legacy channel (such as upstream LSPosed 1.9.2) can
+ * still load the module: their `getModuleApkPath` accepts either marker, but the two-arg constructor
+ * required by modern entry and the no-arg constructor required by Vector are mutually exclusive,
+ * requiring two separate entry classes.
  *
- * 这条路径上配置只能来自 `XSharedPreferences`（需要 others 可读的 xml），
- * 所以 [SharedPreferencesAccess][io.github.nitsuya.aa.display.util.SharedPreferencesAccess]
- * 的兼容写法仅为它而留。
+ * On this path config can only come from `XSharedPreferences` (requiring world-readable xml),
+ * so [SharedPreferencesAccess][io.github.nitsuya.aa.display.util.SharedPreferencesAccess]'s
+ * compatibility logic is kept solely for it.
  */
 class XposedInit : IXposedHookZygoteInit, IXposedHookLoadPackage{
     companion object {
@@ -43,10 +44,10 @@ class XposedInit : IXposedHookZygoteInit, IXposedHookLoadPackage{
             packageName == "android" && lpparam.appInfo == null -> arrayOf(AndroidHook)
             packageName == "com.google.android.projection.gearhead" -> arrayOf(AndroidAuoHook)
             packageName == "com.waze" -> arrayOf(OtherHook, WazeHook)
-            // 只挂 GboardImeHook：OtherHook 会把 status_bar_height 归零，
-            // 那是给投屏里的普通应用用的，输入法进程不需要也不该被改。
+            // Only attach GboardImeHook: OtherHook zeroes status_bar_height, which is intended
+            // for regular apps in projection; the IME process does not need and should not be altered.
             packageName == GboardImeHook.PACKAGE_GBOARD -> arrayOf(GboardImeHook)
-            // 模块自身进程不分发：LSPosed 不允许把模块自己选进作用域。
+            // Do not dispatch to the module's own process: LSPosed does not allow selecting the module itself into scope.
             packageName == BuildConfig.APPLICATION_ID -> null
             lpparam.appInfo == null || lpparam.appInfo.uid == 1000 -> null
             else -> arrayOf(OtherHook)
@@ -69,7 +70,7 @@ class XposedInit : IXposedHookZygoteInit, IXposedHookLoadPackage{
         }
     }
 
-    /** legacy 侧的配置来源：world-readable xml + 显式 `reload()`。 */
+    /** Legacy config source: world-readable xml + explicit `reload()`. */
     private fun installPreferences() {
         HookPreferences.install(
             supplier = {

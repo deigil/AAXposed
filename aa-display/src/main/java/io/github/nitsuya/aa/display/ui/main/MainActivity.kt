@@ -27,6 +27,7 @@ import io.github.nitsuya.aa.display.BuildConfig
 import io.github.nitsuya.aa.display.CoreApi
 import io.github.nitsuya.aa.display.R
 import io.github.nitsuya.aa.display.databinding.ActivityMainBinding
+import io.github.nitsuya.aa.display.ui.remote.RemoteActivity
 import io.github.nitsuya.aa.display.ui.setting.SettingsActivity
 import io.github.nitsuya.aa.display.util.AADisplayConfig
 import io.github.nitsuya.aa.display.util.SharedPreferencesAccess
@@ -148,11 +149,12 @@ class MainActivity :
     }
 
     /**
-     * 状态卡第二行显示手机上装的 Android Auto 版本。
+     * The second line of the status card displays the Android Auto version installed on the phone.
      *
-     * gearhead 的 versionName 形如 17.3.662854-release，尾巴上的 channel 后缀对用户没
-     * 意义，截掉只留版本号。包名已经写在 manifest 的 <queries> 里，所以 targetSdk 30+
-     * 的包可见性限制不会挡住这次查询。
+     * gearhead's versionName looks like 17.3.662854-release; the trailing channel suffix is not
+     * meaningful to the user, so strip it to keep only the version number. The package name is
+     * already declared in the manifest <queries>, so targetSdk 30+ package visibility restrictions
+     * will not block this query.
      */
     private fun aaVersionText(): String {
         val versionName = try {
@@ -173,6 +175,11 @@ class MainActivity :
 
     override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
         return when (menuItem.itemId) {
+            R.id.remote -> {
+                startActivity(Intent(this, RemoteActivity::class.java))
+                true
+            }
+
             R.id.settings -> {
                 openAdvancedSettings()
                 true
@@ -180,7 +187,7 @@ class MainActivity :
 
             R.id.github -> {
                 startActivity(Intent(Intent.ACTION_VIEW).apply {
-                    data = "https://github.com/erxm/AADisplay".toUri()
+                    data = "https://github.com/deigil/AAXposed".toUri()
                 })
                 true
             }
@@ -291,6 +298,7 @@ class MainActivity :
         launcherOptions = queryLauncherOptions(pm)
 
         defaultHomePackage = resolveDefaultHomePackageFallback(pm)
+        Log.i(TAG, "queryLauncherOptions: found=${launcherOptions.map { it.packageName }}, defaultHome=$defaultHomePackage")
 
         val homeDisplay = defaultHomePackage?.let { pkg ->
             launcherOptions.firstOrNull { it.packageName == pkg }?.displayName
@@ -320,6 +328,7 @@ class MainActivity :
 
     private fun bindDelayDropdown() {
         delayOptions = listOf(
+            DelayOption(0, getString(R.string.delay_0_seconds)),
             DelayOption(60, getString(R.string.delay_60_seconds)),
             DelayOption(120, getString(R.string.delay_120_seconds)),
             DelayOption(180, getString(R.string.delay_180_seconds))
@@ -371,6 +380,36 @@ class MainActivity :
         val mergedByPackage = linkedMapOf<String, LauncherOption>()
         pmOptions.forEach { mergedByPackage[it.packageName] = it }
 
+        // AOSP ComputerEngine strips MATCH_ALL for non-system callers on implicit HOME queries;
+        // querying with setPackage(pkg) bypasses that filter and finds all installed HOME launchers.
+        val installedApps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0L))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstalledApplications(0)
+        }
+        for (appInfo in installedApps) {
+            val pkg = appInfo.packageName ?: continue
+            if (mergedByPackage.containsKey(pkg)) continue
+            val scopedIntent = Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_HOME)
+                .setPackage(pkg)
+            val scopedCandidates = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.queryIntentActivities(scopedIntent, PackageManager.ResolveInfoFlags.of(0L))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.queryIntentActivities(scopedIntent, 0)
+            }
+            val match = scopedCandidates.firstOrNull { ri ->
+                val ai = ri.activityInfo ?: return@firstOrNull false
+                isLauncherCandidateAllowed(ai.packageName?.trim().orEmpty(), ai.name?.trim().orEmpty())
+            } ?: continue
+            val label = match.loadLabel(pm)?.toString()?.trim().orEmpty()
+                .ifBlank { pm.getApplicationLabel(appInfo).toString().trim() }
+                .ifBlank { pkg }
+            mergedByPackage[pkg] = LauncherOption(pkg, label)
+        }
+
         queryLauncherPackagesViaShell().forEach { pkg ->
             if (mergedByPackage.containsKey(pkg)) return@forEach
             val label = runCatching {
@@ -386,9 +425,12 @@ class MainActivity :
     private fun isLauncherCandidateAllowed(pkg: String, cls: String): Boolean {
         if (pkg.isBlank()) return false
         if (
+            pkg == BuildConfig.APPLICATION_ID ||
             pkg == "android" ||
             pkg == "com.android.internal.app" ||
             pkg == "com.android.settings" ||
+            pkg == "com.android.launcher3" ||
+            pkg == "com.google.android.apps.nexuslauncher" ||
             cls.contains("FallbackHome", ignoreCase = true) ||
             cls.contains("ResolverActivity", ignoreCase = true)
         ) {
@@ -428,19 +470,42 @@ class MainActivity :
         } else {
             @Suppress("DEPRECATION")
             pm.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)
-        } ?: return null
-
-        val pkg = resolveInfo.activityInfo?.packageName ?: return null
-        val cls = resolveInfo.activityInfo?.name.orEmpty()
-        return if (
-            pkg == "android" ||
-            pkg == "com.android.internal.app" ||
-            cls.contains("ResolverActivity", ignoreCase = true)
-        ) {
-            null
-        } else {
-            pkg
         }
+
+        val pkg = resolveInfo?.activityInfo?.packageName
+        val cls = resolveInfo?.activityInfo?.name.orEmpty()
+        if (
+            pkg != null &&
+            pkg != "android" &&
+            pkg != "com.android.internal.app" &&
+            !cls.contains("ResolverActivity", ignoreCase = true)
+        ) {
+            return pkg
+        }
+
+        if (!Shell.getShell().isRoot) return null
+        val output = runCatching {
+            Shell.getShell().newJob()
+                .add("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME")
+                .exec()
+                .out
+        }.getOrDefault(emptyList())
+
+        for (line in output) {
+            val trimmed = line.trim()
+            if (!trimmed.contains("/")) continue
+            val resolvedPkg = trimmed.substringBefore("/").trim()
+            val resolvedCls = trimmed.substringAfter("/", "").trim()
+            if (
+                resolvedPkg.isNotBlank() &&
+                resolvedPkg != "android" &&
+                resolvedPkg != "com.android.internal.app" &&
+                !resolvedCls.contains("ResolverActivity", ignoreCase = true)
+            ) {
+                return resolvedPkg
+            }
+        }
+        return null
     }
 
     private fun resolveSelectedLauncherPackage(): String? {
@@ -467,13 +532,6 @@ class MainActivity :
             return false
         }
 
-        if (launcherOptions.size <= 1) {
-            baseBinding.tilLauncherPackage.error = getString(R.string.single_launcher_warning)
-            hideValidationMessage()
-            clearLaunchPackageValidState()
-            return false
-        }
-
         if (selectedPackage.isNullOrBlank()) {
             baseBinding.tilLauncherPackage.error = getString(R.string.default_launch_package_empty)
             hideValidationMessage()
@@ -482,6 +540,12 @@ class MainActivity :
         }
 
         if (selectedPackage == defaultHomePackage) {
+            if (launcherOptions.size == 1) {
+                baseBinding.tilLauncherPackage.error = null
+                clearLaunchPackageValidState()
+                showValidationMessage(getString(R.string.single_launcher_warning), false)
+                return true
+            }
             val errorText = getString(R.string.package_same_error)
             baseBinding.tilLauncherPackage.error = errorText
             hideValidationMessage()

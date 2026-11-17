@@ -30,6 +30,7 @@ import io.github.nitsuya.aa.display.xposed.CoreManagerService
 import io.github.nitsuya.aa.display.xposed.HookPreferences
 import io.github.nitsuya.aa.display.xposed.IShellManager
 import io.github.nitsuya.aa.display.xposed.TipUtil
+import io.github.nitsuya.aa.display.xposed.hook.AndroidHook
 import io.github.nitsuya.aa.display.xposed.log
 import io.github.nitsuya.aa.display.xposed.util.Instances
 import io.github.nitsuya.template.bases.runMain
@@ -44,11 +45,11 @@ class AaVirtualDisplayAdapter(
         const val TAG = "AADisplay_AaVirtualDisplayAdapter"
         private const val WINDOWING_MODE_PINNED = 2
 
-        /** 输入法渲染在投屏 VD 自己身上。 */
+        /** IME renders on the projection VirtualDisplay itself. */
         private const val DISPLAY_IME_POLICY_LOCAL = 0
-        /** 输入法交给 fallback display，即 default display / 手机主屏。 */
+        /** IME falls back to the default display / phone main screen. */
         private const val DISPLAY_IME_POLICY_FALLBACK_DISPLAY = 1
-        /** 该屏不显示输入法。 */
+        /** Do not show IME on this display. */
         private const val DISPLAY_IME_POLICY_HIDE = 2
 
         /** Package names to ignore in recent task list */
@@ -61,7 +62,9 @@ class AaVirtualDisplayAdapter(
             BuildConfig.APPLICATION_ID,
             "android",
             "com.android.internal.app",
-            "com.android.settings"
+            "com.android.settings",
+            "com.android.launcher3",
+            "com.google.android.apps.nexuslauncher"
         )
     }
 
@@ -80,7 +83,11 @@ class AaVirtualDisplayAdapter(
     private val mTrackedPackageUsers = linkedMapOf<String, MutableSet<Int>>()
     private val mTaskStackListener = TaskStackListener()
     var mDisplayId = Display.INVALID_DISPLAY
+    var mDisplayWidth: Int = 0
+    var mDisplayHeight: Int = 0
     var mDensityDpi: Int = 0
+    var mLauncherUid: Int = -1
+    val launcherPackage: String? get() = mLauncherPackage
 
     private val mTransaction = SurfaceControl.Transaction()
     private var mSurfaceControls = mutableMapOf<SurfaceControl, SurfaceControl>()
@@ -157,14 +164,22 @@ class AaVirtualDisplayAdapter(
             Binder.restoreCallingIdentity(indent)
         }
         mDisplayId = mVirtualDisplay.display.displayId
+        mDisplayWidth = width
+        mDisplayHeight = height
         mDensityDpi = densityDpi
-        log(TAG, "virtual display created: id=$mDisplayId, ${width}x$height,$densityDpi, surface=${surface != null}, launcher=${mLauncherPackage.orEmpty()}")
+        updateLauncherUid()
+        log(TAG, "virtual display created: id=$mDisplayId, ${width}x$height,$densityDpi, surface=${surface != null}, launcher=${mLauncherPackage.orEmpty()}, launcherUid=$mLauncherUid")
+
+        AndroidHook.FuckAppUseApplicationContext.hook()
+        if (AADisplayConfig.ForceAppFullscreenOnProjection.get(HookPreferences.latest() ?: config)) {
+            AndroidHook.AppFullscreenOnProjection.hook()
+        }
 
         try {
             Instances.iWindowManager.apply {
-                // 与 nitsuya 上游一致：按配置下发，不再强制 LOCAL。
-                // 默认 FALLBACK_DISPLAY(1)，虚拟屏唤起的输入法落到手机主屏，
-                // 车机那块 1280x720 横屏不再被键盘挡住半屏。
+                // Consistent with upstream nitsuya: apply per config instead of forcing LOCAL.
+                // Default FALLBACK_DISPLAY(1) routes IME invoked on virtual display to phone main screen,
+                // so the 1280x720 landscape head unit is no longer half-covered by the keyboard.
                 val imePolicy = AADisplayConfig.DisplayImePolicy.get(config).let {
                     if (it in DISPLAY_IME_POLICY_LOCAL..DISPLAY_IME_POLICY_HIDE) it
                     else DISPLAY_IME_POLICY_FALLBACK_DISPLAY
@@ -175,7 +190,7 @@ class AaVirtualDisplayAdapter(
                 setShouldShowSystemDecors(mDisplayId, false)
             }
         } catch (e : Throwable){
-            log(TAG, "设置虚拟屏幕参数失败: ", e)
+            log(TAG, "Failed to set virtual display parameters: ", e)
         }
         //mDisplayWindowManager = context.createDisplayContext(mVirtualDisplay.display).getSystemService(WindowManager::class.java).apply {
         mDisplayWindowManager = context.createDisplayContext(mVirtualDisplay.display).createWindowContext(mVirtualDisplay.display, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null).getSystemService(WindowManager::class.java).apply {
@@ -202,6 +217,16 @@ class AaVirtualDisplayAdapter(
             )
         }
         Instances.iActivityTaskManager.registerTaskStackListener(mTaskStackListener)
+        // Cold-start secondary car launcher so its DisplayController/DeviceProfile initializes on the virtual display
+        val launcher = mLauncherPackage
+        if (launcher != null && launcher != resolveDefaultHomePackage()) {
+            runCatching {
+                Instances.activityManagerHidden.forceStopPackageAsUser(launcher, 0)
+                log(TAG, "onConnected forceStop secondary launcher: $launcher")
+            }.onFailure { e ->
+                log(TAG, "onConnected forceStop $launcher failed", e)
+            }
+        }
         // When virtual display is created, launch default package first (if configured)
         if(mLauncherPackage != null) {
             startDefaultPackage()
@@ -214,8 +239,11 @@ class AaVirtualDisplayAdapter(
 
     fun onReconnected(width: Int, height: Int, densityDpi: Int){
         mVirtualDisplay.resize(width, height, densityDpi)
+        mDisplayWidth = width
+        mDisplayHeight = height
         mDensityDpi = densityDpi
         refreshLauncherPackage("reconnect")
+        updateLauncherUid()
         trackPackage(mLauncherPackage, 0)
         trackPackage(mHomePackage, 0)
     }
@@ -226,18 +254,24 @@ class AaVirtualDisplayAdapter(
             return
         }
         mIsDestroying = true
+        AndroidHook.FuckAppUseApplicationContext.unHook()
+        AndroidHook.AppFullscreenOnProjection.unHook()
         if (!::mVirtualDisplay.isInitialized) {
             log(TAG, "onDestroy ignored: virtual display was never initialized")
+            mDisplayWidth = 0
+            mDisplayHeight = 0
+            mLauncherUid = -1
             tryOrNull { CoreManagerService.systemContext.unbindService(mServiceConnection) }
             mShellManager = null
             return
         }
         trackPackage(mLauncherPackage, 0)
         trackPackage(mHomePackage, 0)
+        val defaultHome = resolveDefaultHomePackage()
         val protectedPackages = linkedSetOf<String>().apply {
             add(BuildConfig.APPLICATION_ID)
-            mLauncherPackage?.trim()?.takeIf { it.isNotEmpty() }?.let { add(it) }
-            mHomePackage?.trim()?.takeIf { it.isNotEmpty() }?.let { add(it) }
+            mLauncherPackage?.trim()?.takeIf { it.isNotEmpty() && it == defaultHome }?.let { add(it) }
+            mHomePackage?.trim()?.takeIf { it.isNotEmpty() && it == defaultHome }?.let { add(it) }
             addAll(getForegroundPackagesOnDisplay(Display.DEFAULT_DISPLAY))
         }
         tryOrNull { Instances.iActivityTaskManager.unregisterTaskStackListener(mTaskStackListener) }
@@ -273,6 +307,7 @@ class AaVirtualDisplayAdapter(
         mSurfaceControls.values.forEach { it.release() }
         mSurfaceControls.clear()
         tryOrNull { mDisplayWindowManager.removeView(mForceView) }
+        releaseDefaultHomeToPhoneIfNeeded("onDestroy")
         try {
             mVirtualDisplay.release()
             log(TAG, "virtual display released")
@@ -280,7 +315,10 @@ class AaVirtualDisplayAdapter(
             log(TAG, "virtual display release failed", e)
         }
         mDisplayId = Display.INVALID_DISPLAY
+        mDisplayWidth = 0
+        mDisplayHeight = 0
         mDensityDpi = 0
+        mLauncherUid = -1
 
         // The configured teardown commands are explicitly post-release. Keep the service bound
         // until its Binder call finishes so a valid connected session cannot be silently skipped.
@@ -297,6 +335,61 @@ class AaVirtualDisplayAdapter(
         } finally {
             mShellManager = null
             tryOrNull { CoreManagerService.systemContext.unbindService(mServiceConnection) }
+        }
+    }
+
+    fun releaseDefaultHomeToPhoneIfNeeded(reason: String) {
+        if (mDisplayId == Display.INVALID_DISPLAY) return
+        val defaultHome = resolveDefaultHomePackage()?.takeIf { it.isNotBlank() } ?: return
+        if (mLauncherPackage != defaultHome && mHomePackage != defaultHome) return
+
+        val tasksOnVd = tryOrNull {
+            Instances.iActivityTaskManager.getAllRootTaskInfosOnDisplay(mDisplayId)
+        } ?: emptyList()
+        val matchingTasks = tasksOnVd.filter { taskInfo ->
+            val topPkg = taskInfo.topActivity?.packageName
+            val basePkg = runCatching {
+                taskInfo.getObjectAs("baseActivity", ComponentName::class.java) as? ComponentName
+            }.getOrNull()?.packageName
+            val intentPkg = runCatching {
+                taskInfo.getObjectAs("baseIntent", Intent::class.java) as? Intent
+            }.getOrNull()?.component?.packageName
+            topPkg == defaultHome || basePkg == defaultHome || intentPkg == defaultHome
+        }
+
+        if (matchingTasks.isEmpty() && reason != "onDestroyDisplay") {
+            return
+        }
+
+        matchingTasks.forEach { task ->
+            removeTask(task.taskId)
+        }
+        try {
+            Instances.activityManagerHidden.forceStopPackageAsUser(defaultHome, 0)
+            log(TAG, "releaseDefaultHome[$reason]: reset $defaultHome (removed ${matchingTasks.size} vd task(s))")
+        } catch (e: Throwable) {
+            log(TAG, "releaseDefaultHome[$reason]: forceStop $defaultHome failed", e)
+        }
+        try {
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val options = ActivityOptions.makeBasic().apply {
+                launchDisplayId = Display.DEFAULT_DISPLAY
+                invokeMethod("setCallerDisplayId", args(Display.DEFAULT_DISPLAY), argTypes(Integer.TYPE))
+            }.toBundle()
+            val userHandle = UserHandle::class.java.newInstance(
+                args(0),
+                argTypes(Integer.TYPE)
+            )
+            context.invokeMethod(
+                "startActivityAsUser",
+                args(homeIntent, options, userHandle),
+                argTypes(Intent::class.java, Bundle::class.java, UserHandle::class.java)
+            )
+        } catch (e: Throwable) {
+            log(TAG, "releaseDefaultHome[$reason]: restart HOME on default display failed", e)
         }
     }
 
@@ -379,8 +472,8 @@ class AaVirtualDisplayAdapter(
     }
 
     /**
-     * @param withSnapshot 是否连带取任务快照。手机端镜像小窗只显示图标，
-     *   传 false 可以省掉每个任务一次 getTaskSnapshot IPC 和 HardwareBuffer 包装。
+     * @param withSnapshot Whether to also fetch task snapshots. Phone mirror window only shows icons;
+     *   passing false avoids one getTaskSnapshot IPC and HardwareBuffer wrapper per task.
      */
     fun getRecentTask(withSnapshot: Boolean = true): RecentTask {
         return try{
@@ -449,12 +542,10 @@ class AaVirtualDisplayAdapter(
                 "startActivityAsUser",
                 args(
                     Intent().apply {
-                        //addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         component = componentName
                         `package` = component?.packageName ?: return false
                         action = Intent.ACTION_VIEW
                         putExtra("displayId", mDisplayId)
-                        //putExtra("isUcarMode", true)
                         setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     },
                     ActivityOptions.makeBasic().apply {
@@ -475,7 +566,7 @@ class AaVirtualDisplayAdapter(
     }
 
     private fun refreshLauncherPackage(reason: String) {
-        // 现代 API 的远端配置是实时的；旧框架下由 HookPreferences.latest() 负责 reload。
+        // Modern API remote config is real-time; under legacy framework HookPreferences.latest() handles reload.
         val configured = AADisplayConfig.LauncherPackage.get(HookPreferences.latest() ?: config)
         val resolved = resolveLauncherPackage(configured)
         if (mLauncherPackage != resolved) {
@@ -487,7 +578,7 @@ class AaVirtualDisplayAdapter(
 
     private fun resolveLauncherPackage(configured: String?): String? {
         val requested = configured?.trim()?.takeIf { it.isNotEmpty() }
-        if (requested != null && resolveLaunchComponent(requested) != null) {
+        if (requested != null && !BLOCKED_HOME_PACKAGES.contains(requested) && resolveLaunchComponent(requested) != null) {
             return requested
         }
         if (requested != null) {
@@ -497,6 +588,7 @@ class AaVirtualDisplayAdapter(
         val defaultHome = resolveDefaultHomePackage()
         val homeCandidates = queryHomeLauncherPackages()
         val fallback = homeCandidates.firstOrNull { pkg -> pkg != defaultHome }
+            ?: homeCandidates.firstOrNull()
 
         log(
             TAG,
@@ -505,16 +597,39 @@ class AaVirtualDisplayAdapter(
         return fallback
     }
 
+    private fun updateLauncherUid() {
+        val launcher = mLauncherPackage?.trim()?.takeIf { it.isNotEmpty() }
+        mLauncherUid = if (launcher != null && launcher != resolveDefaultHomePackage()) {
+            runCatching { Instances.packageManager.getPackageUid(launcher, 0) }.getOrDefault(-1)
+        } else {
+            -1
+        }
+    }
+
     private fun resolveLaunchComponent(packageName: String): ComponentName? {
         val requested = packageName.trim()
         if (requested.isEmpty()) return null
-        return if (requested.contains("/")) {
+        if (requested.contains("/")) {
             val packageComponent = requested.split("/", limit = 2)
             if (packageComponent.size != 2) return null
-            ComponentName.createRelative(packageComponent[0], packageComponent[1])
-        } else {
-            Instances.packageManager.getLaunchIntentForPackage(requested)?.component
+            return ComponentName.createRelative(packageComponent[0], packageComponent[1])
         }
+        if (requested == mLauncherPackage || requested == mHomePackage) {
+            val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(requested)
+            val resolved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.queryIntentActivities(
+                    homeIntent,
+                    PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_ALL.toLong())
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.queryIntentActivities(homeIntent, PackageManager.MATCH_ALL)
+            }.firstOrNull()?.activityInfo
+            if (resolved != null) {
+                return ComponentName(resolved.packageName, resolved.name)
+            }
+        }
+        return Instances.packageManager.getLaunchIntentForPackage(requested)?.component
     }
 
     private fun resolveDefaultHomePackage(): String? {
@@ -774,7 +889,7 @@ class AaVirtualDisplayAdapter(
                             Instances.iActivityTaskManager.getTaskSnapshot(taskInfo.taskId, true)
                         }
                     } catch (e: Throwable){
-                        Instances.iActivityTaskManager.getTaskSnapshot(taskInfo.taskId, true)
+                        tryOrNull { Instances.iActivityTaskManager.getTaskSnapshot(taskInfo.taskId, true) }
                     }?.let { taskSnapshot ->
                         taskSnapshot.hardwareBuffer?.let { buffer ->
                             Bitmap.wrapHardwareBuffer(buffer, taskSnapshot.colorSpace)

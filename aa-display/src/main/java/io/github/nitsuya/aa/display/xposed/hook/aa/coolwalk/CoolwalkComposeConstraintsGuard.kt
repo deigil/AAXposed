@@ -10,38 +10,40 @@ import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 
 /**
- * gearhead 17.x 的车机 UI 是 Compose。隐藏 UI 控件栈
- * （[io.github.nitsuya.aa.display.xposed.hook.aa.AaUiHook] 的 hideAaUiControls）会把
- * Coolwalk 的 GhFacetBar VD 饿到 1×H、Dashboard VD 饿到 1×1，并把残留窗口宽度写 0。
+ * gearhead 17.x's head unit UI is Compose. Hiding the UI control stack
+ * ([io.github.nitsuya.aa.display.xposed.hook.aa.AaUiHook]'s hideAaUiControls) starves
+ * Coolwalk's GhFacetBar VD to 1xH, Dashboard VD to 1x1, and zeroes leftover window widths.
  *
- * Compose 的 `Constraints(minWidth, maxWidth, minHeight, maxHeight)` 工厂里是硬断言：
- * `maxWidth >= minWidth && maxHeight >= minHeight && minWidth >= 0 && minHeight >= 0`，
- * 不满足就抛 [IllegalArgumentException]
- * `maxWidth must be >= than minWidth,\nmaxHeight must be >= than minHeight,\nminWidth and minHeight must be >= 0`。
+ * Compose's `Constraints(minWidth, maxWidth, minHeight, maxHeight)` factory enforces:
+ * `maxWidth >= minWidth && maxHeight >= minHeight && minWidth >= 0 && minHeight >= 0`,
+ * otherwise throwing [IllegalArgumentException]
+ * `maxWidth must be >= than minWidth,\nmaxHeight must be >= than minHeight,\nminWidth and minHeight must be >= 0`.
  *
- * 分栏容器（`Lmrs;` MeasurePolicy，`Llwd;` 里带 `IS_HORIZONTAL` 的那套布局）测量时用
- * 「主轴可用量 − 第一组已用量」当第二组的预算，再经 `Constraints.copy` 写回主轴 max。
- * 容器只剩 0/1 px 时这个差值为负 → 断言失败 → 在 `AndroidComposeView.dispatchDraw`
- * 的延迟测量里直接打死 `gearhead:projection`（连车/连 DHU 时表现为 Android Auto 闪退）。
+ * Split-pane containers (`Lmrs;` MeasurePolicy, `Llwd;` layout with `IS_HORIZONTAL`) measure by
+ * subtracting the first group's used space from main-axis available space as the second group's budget,
+ * writing it back via `Constraints.copy`. When the container has 0/1 px left, the difference is negative,
+ * failing the assertion and crashing `gearhead:projection` in `AndroidComposeView.dispatchDraw`
+ * (manifesting as an Android Auto crash when connecting to car/DHU).
  *
- * 这里只钩那两个校验入口：**参数合法时立即原样放行**（稳态开销就是四次 int 比较），
- * 只有本来必定抛异常的四元组才夹回合法值——负的 max 收到 0，min 再夹到 max 以内，
- * 等价于「这一轴没有可用空间」，子项量成 0，和 Compose 处理 0 尺寸容器的行为一致。
- * 不吞异常、不改任何有效约束的语义，也不依赖被饿死的具体窗口是哪一个。
+ * Here we only hook the two validation entry points: **valid arguments pass through untouched**
+ * (steady-state cost is four int comparisons); only tuples that would inevitably throw are clamped
+ * to valid bounds (negative max clamped to 0, min clamped to <= max), equivalent to "no space on
+ * this axis" so children measure as 0, matching Compose's handling of 0-sized containers.
+ * Does not swallow exceptions, alter any valid constraints, or depend on which window was starved.
  */
 object CoolwalkComposeConstraintsGuard {
 
-    // AA 17.8 把这条断言改成了带格式符的版本：
+    // AA 17.8 changed this assertion to include format specifiers:
     //   "maxWidth(%d) must be >= than minWidth(%d),\nmaxHeight(%d) must be >= than minHeight(%d)"
-    // 旧串 "maxWidth must be >= than minWidth" 因此不再是被包含的子串，DexKit 命中为 0。
-    // 取两段共有的中缀 "must be >= than minWidth"：17.2 与 17.8 都能匹配。
+    // The old string "maxWidth must be >= than minWidth" is no longer a substring, giving 0 DexKit hits.
+    // Use the shared infix "must be >= than minWidth", which matches both 17.2 and 17.8.
     private const val FAILURE_MARKER = "must be >= than minWidth"
     private const val LOG_LIMIT = 8
 
     /**
-     * 所有会抛这条断言的 `Constraints(minWidth, maxWidth, minHeight, maxHeight): long` 校验入口。
-     * 17.3 里有两个（一个直接比较后抛，一个先与出布尔再抛），必须都钩，
-     * 只钩其中一个等于赌哪条路径先炸。
+     * All `Constraints(minWidth, maxWidth, minHeight, maxHeight): long` validation entry points that
+     * throw this assertion. 17.3 has two (one compares directly, one computes a boolean first); both
+     * must be hooked, otherwise whichever path fires first will crash.
      */
     private var factories: List<Method> = emptyList()
 
@@ -133,7 +135,7 @@ object CoolwalkComposeConstraintsGuard {
     private fun note(detail: String) {
         repaired++
         when {
-            // 第一次带栈打印，用来确认修复点确实落在分栏容器的测量路径上。
+            // Print stack trace on first occurrence to confirm the fix lands on the split-pane measure path.
             repaired == 1 -> log(
                 CoolwalkHookEnv.TAG,
                 "AaUiHook: repair Constraints $detail #1",

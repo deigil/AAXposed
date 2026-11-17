@@ -4,36 +4,36 @@ import android.content.pm.ApplicationInfo
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 
 /**
- * 与具体 Xposed 框架无关的“被 hook 目标”描述。
+ * Framework-agnostic description of a hooked target.
  *
- * 迁移到 libxposed（现代 API）后，两条入口给出的参数类型完全不同：
- * - legacy：[XC_LoadPackage.LoadPackageParam]（`public final`，构造器是包私有的，
- *   没法在模块里自己造一个）；
- * - modern：`XposedModuleInterface.PackageReadyParam` / `SystemServerStartingParam`，
- *   而且**两个 modern 回调都不提供进程名**，进程名只能从 `onModuleLoaded` 拿到再存下来。
+ * After migrating to libxposed (modern API), the two entry points provide completely different param types:
+ * - legacy: [XC_LoadPackage.LoadPackageParam] (`public final` with package-private constructor,
+ *   cannot be instantiated by the module);
+ * - modern: `XposedModuleInterface.PackageReadyParam` / `SystemServerStartingParam`,
+ *   and **neither modern callback provides the process name**, which must be captured from `onModuleLoaded`.
  *
- * 所以各 hook 统一收本类型，由入口负责把两种参数翻译过来。字段只保留全树实际用到的：
- * `classLoader`、`processName`、`packageName`、`appInfo`（仅为 `sourceDir` / `uid`）。
+ * All hooks therefore accept this unified type, translated by the entry point. Only fields actually
+ * used across the codebase are kept: `classLoader`, `processName`, `packageName`, `appInfo` (for `sourceDir` / `uid`).
  */
 class HookTarget(
-    /** 宿主包名。system_server 沿用 legacy 的写法 `"android"`。 */
+    /** Host package name. system_server keeps legacy `"android"`. */
     val packageName: String,
-    /** 进程名。modern 侧来自 `ModuleLoadedParam.getProcessName()`。 */
+    /** Process name. On modern side comes from `ModuleLoadedParam.getProcessName()`. */
     val processName: String,
-    /** 宿主 ClassLoader。 */
+    /** Host ClassLoader. */
     val classLoader: ClassLoader,
     /**
-     * 宿主 ApplicationInfo。system_server 下为 null —— legacy 就是靠
-     * `packageName == "android" && appInfo == null` 认出系统进程的。
+     * Host ApplicationInfo. Null for system_server — legacy identifies system_server via
+     * `packageName == "android" && appInfo == null`.
      */
     val appInfo: ApplicationInfo?,
     /**
-     * 是否是进程里的第一个应用。modern API 没有等价物（`isFirstPackage()` 在
-     * `onPackageReady` 阶段拿不到），仅用于日志，缺省 false。
+     * Whether this is the first app in the process. Modern API has no equivalent (`isFirstPackage()`
+     * is unavailable in `onPackageReady`); used only for logging, defaults to false.
      */
     val isFirstApplication: Boolean = false,
 ) {
-    /** 是否为 system_server。 */
+    /** Whether this target is system_server. */
     val isSystemServer: Boolean get() = packageName == PACKAGE_ANDROID && appInfo == null
 
     override fun toString(): String =
@@ -42,7 +42,7 @@ class HookTarget(
     companion object {
         const val PACKAGE_ANDROID = "android"
 
-        /** legacy 入口用：把 [XC_LoadPackage.LoadPackageParam] 原样搬过来。 */
+        /** For legacy entry: copy [XC_LoadPackage.LoadPackageParam] as-is. */
         fun of(lpparam: XC_LoadPackage.LoadPackageParam): HookTarget = HookTarget(
             packageName = lpparam.packageName,
             processName = lpparam.processName,

@@ -14,9 +14,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * content_bounds reclaim has started on this connection. Must run in gearhead where
  * the spec is constructed; AADisplay unmarshals via [Parcelable.Creator] — hook both.
  *
- * 只在 gearhead 侧安装。AADisplay 自己的进程无法被 hook（LSPosed 不允许把模块自身
- * 选进作用域），投屏尺寸由 system_server 里的 [DisplayProfileSettle] / `resolveDisplayProfile`
- * 最终裁定，不依赖模块进程侧的 spec 改写。
+ * Installed only on the gearhead side. AADisplay's own process cannot be hooked (LSPosed does not allow
+ * selecting the module itself into scope); projection dimensions are ultimately adjudicated by
+ * [DisplayProfileSettle] / `resolveDisplayProfile` in system_server, without relying on spec rewriting
+ * on the module process side.
  */
 object CoolwalkDrawingSpecWiden {
 

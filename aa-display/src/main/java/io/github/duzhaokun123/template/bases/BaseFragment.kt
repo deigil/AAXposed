@@ -21,7 +21,6 @@ abstract class BaseFragment<BaseBinding : ViewBinding>(private val baseBindingCl
     override fun onCreate(savedInstanceState: Bundle?) {
         isFirstCreate = savedInstanceState == null
         super.onCreate(savedInstanceState)
-//        setHasOptionsMenu(true)
     }
 
     override fun onCreateView(

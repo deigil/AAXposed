@@ -56,7 +56,6 @@ object AaBtnEventHook: AaHook() {
                 return@hookBefore
             }
             isDisposeHookReceive.putIfAbsent(needAction, param.args[0])
-//                log(tagName,"registerReceiver->$clazzName:${mActions.joinToString()}")
             try {
                 findMethod(clazz, findSuper = true) {
                     name == "onReceive"

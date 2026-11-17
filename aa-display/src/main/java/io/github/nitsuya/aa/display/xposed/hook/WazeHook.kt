@@ -105,7 +105,7 @@ object WazeHook : BaseHook() {
             }
         }
 
-        // 现代 API 的远端配置是实时的，不需要（也没有）reload。
+        // Modern API remote config is real-time and does not need (nor have) reload.
         return AADisplayConfig.DisableWazeOnAa.get(HookPreferences.latest())
     }
 

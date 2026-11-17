@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    //kotlin("android")
     id("dev.rikka.tools.refine") version "4.4.0"
 }
 
@@ -19,10 +18,10 @@ android {
     }
 
     packaging {
-        // 不能整块排除 META-INF/**：libxposed 的模块描述文件（module.prop /
-        // java_init.list / scope.list）必须以 META-INF/xposed/ 的形式留在 APK 里，
-        // 框架就是按这些 zip entry 判断模块是不是 modern 模块的。
-        // 这里逐项列出原先想丢掉的依赖元数据，保持 META-INF/xposed/** 不被波及。
+        // Do not exclude META-INF/** wholesale: libxposed module descriptors (module.prop /
+        // java_init.list / scope.list) must remain in the APK under META-INF/xposed/,
+        // as the framework uses these zip entries to identify modern modules.
+        // List the unwanted dependency metadata individually so META-INF/xposed/** is untouched.
         resources.excludes.addAll(
             arrayOf(
                 "META-INF/MANIFEST.MF",
@@ -92,7 +91,7 @@ android {
         variant.outputs.all {
             val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
             val versionName = variant.versionName.replace("#", "-")
-            output.outputFileName = "aa-display-${versionName}.apk"
+            output.outputFileName = "aaxposed-${versionName}.apk"
         }
     }
     
@@ -128,7 +127,6 @@ dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-ktx:1.11.0")
     implementation("androidx.fragment:fragment-ktx:1.8.9")
-//    implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.media:media:1.7.1")
     implementation("androidx.constraintlayout:constraintlayout:2.2.1")
     implementation("androidx.preference:preference-ktx:1.2.1")
@@ -148,27 +146,28 @@ dependencies {
     implementation("dev.rikka.hidden:compat:4.4.0")
     compileOnly("dev.rikka.hidden:stub:4.4.0")
     compileOnly(files("./libs/de.robv.android.xposed_api_82.jar"))
-    // libxposed（现代 Xposed API）。api 必须是 compileOnly：框架会检查入口类的
-    // XposedModule 是否由框架自己的 ClassLoader 加载，编进 APK 会直接被拒绝加载。
-    // 固定在 101：102 的 AAR 要求 compileSdk=37（AGP 8.11.2 只支持到 36）。
-    // 101 与 102 的 XposedModule 构造器、四个回调签名、IXposedService 的
-    // DESCRIPTOR 与事务码完全一致，attachFramework 由框架在自己加载的 api 类上调用，
-    // 所以按 101 编译在 102 框架上同样可用。module.prop 里 targetApiVersion 也声明 101，
-    // 这样 de.robv.android.xposed.* 不会被 blockLegacyApi 挡掉（EzXHelper 依赖它）。
+    // libxposed (modern Xposed API). api must be compileOnly: the framework checks that the
+    // entry class's XposedModule is loaded by the framework's own ClassLoader; bundling it
+    // into the APK will cause loading to be rejected.
+    // Pinned at 101: 102's AAR requires compileSdk=37 (AGP 8.11.2 only supports up to 36).
+    // 101 and 102 have identical XposedModule constructors, four callback signatures, and
+    // IXposedService DESCRIPTOR/transaction codes; attachFramework is invoked by the framework
+    // on its own loaded api class, so compiling against 101 also works on 102 frameworks.
+    // targetApiVersion in module.prop is also declared as 101 so de.robv.android.xposed.*
+    // is not blocked by blockLegacyApi (EzXHelper depends on it).
     compileOnly("io.github.libxposed:api:101.0.0") {
-        // libxposed 的 pom 声明了 kotlin-stdlib 2.2.10，会把项目的 stdlib 顶到
-        // 编译器（Kotlin 2.0.0，最多读 2.1.0 元数据）读不了的版本。它的 class
-        // 文件里没有任何 kotlin/ 引用，纯 Java，排掉即可。
+        // libxposed's pom declares kotlin-stdlib 2.2.10, which bumps the project's stdlib
+        // beyond what the compiler (Kotlin 2.0.0, max 2.1.0 metadata) can read. Its class
+        // files have no kotlin/ references (pure Java), so excluding it is safe.
         exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
     }
-    // 模块 App 侧：通过 XposedService 写远端配置，取代世界可读的 XSharedPreferences。
+    // Module app side: writes remote config via XposedService, replacing world-readable XSharedPreferences.
     implementation("io.github.libxposed:service:101.0.0") {
         exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
     }
     implementation("com.github.kyuubiran:EzXHelper:1.0.3")
     implementation("com.github.topjohnwu.libsu:core:5.2.0")
     implementation("org.luckypray:dexkit:2.0.0-rc3")
-//    implementation("com.github.martoreto:aauto-sdk:v4.7")
     implementation(files("./libs/aauto.aar"))
 
     //lifecycle
