@@ -298,6 +298,7 @@ class MainActivity :
         launcherOptions = queryLauncherOptions(pm)
 
         defaultHomePackage = resolveDefaultHomePackageFallback(pm)
+        Log.i(TAG, "queryLauncherOptions: found=${launcherOptions.map { it.packageName }}, defaultHome=$defaultHomePackage")
 
         val homeDisplay = defaultHomePackage?.let { pkg ->
             launcherOptions.firstOrNull { it.packageName == pkg }?.displayName
@@ -379,6 +380,36 @@ class MainActivity :
         val mergedByPackage = linkedMapOf<String, LauncherOption>()
         pmOptions.forEach { mergedByPackage[it.packageName] = it }
 
+        // AOSP ComputerEngine strips MATCH_ALL for non-system callers on implicit HOME queries;
+        // querying with setPackage(pkg) bypasses that filter and finds all installed HOME launchers.
+        val installedApps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0L))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstalledApplications(0)
+        }
+        for (appInfo in installedApps) {
+            val pkg = appInfo.packageName ?: continue
+            if (mergedByPackage.containsKey(pkg)) continue
+            val scopedIntent = Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_HOME)
+                .setPackage(pkg)
+            val scopedCandidates = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.queryIntentActivities(scopedIntent, PackageManager.ResolveInfoFlags.of(0L))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.queryIntentActivities(scopedIntent, 0)
+            }
+            val match = scopedCandidates.firstOrNull { ri ->
+                val ai = ri.activityInfo ?: return@firstOrNull false
+                isLauncherCandidateAllowed(ai.packageName?.trim().orEmpty(), ai.name?.trim().orEmpty())
+            } ?: continue
+            val label = match.loadLabel(pm)?.toString()?.trim().orEmpty()
+                .ifBlank { pm.getApplicationLabel(appInfo).toString().trim() }
+                .ifBlank { pkg }
+            mergedByPackage[pkg] = LauncherOption(pkg, label)
+        }
+
         queryLauncherPackagesViaShell().forEach { pkg ->
             if (mergedByPackage.containsKey(pkg)) return@forEach
             val label = runCatching {
@@ -405,7 +436,7 @@ class MainActivity :
         ) {
             return false
         }
-        return packageManager.getLaunchIntentForPackage(pkg) != null
+        return true
     }
 
     private fun queryLauncherPackagesViaShell(): List<String> {
@@ -439,19 +470,42 @@ class MainActivity :
         } else {
             @Suppress("DEPRECATION")
             pm.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)
-        } ?: return null
-
-        val pkg = resolveInfo.activityInfo?.packageName ?: return null
-        val cls = resolveInfo.activityInfo?.name.orEmpty()
-        return if (
-            pkg == "android" ||
-            pkg == "com.android.internal.app" ||
-            cls.contains("ResolverActivity", ignoreCase = true)
-        ) {
-            null
-        } else {
-            pkg
         }
+
+        val pkg = resolveInfo?.activityInfo?.packageName
+        val cls = resolveInfo?.activityInfo?.name.orEmpty()
+        if (
+            pkg != null &&
+            pkg != "android" &&
+            pkg != "com.android.internal.app" &&
+            !cls.contains("ResolverActivity", ignoreCase = true)
+        ) {
+            return pkg
+        }
+
+        if (!Shell.getShell().isRoot) return null
+        val output = runCatching {
+            Shell.getShell().newJob()
+                .add("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME")
+                .exec()
+                .out
+        }.getOrDefault(emptyList())
+
+        for (line in output) {
+            val trimmed = line.trim()
+            if (!trimmed.contains("/")) continue
+            val resolvedPkg = trimmed.substringBefore("/").trim()
+            val resolvedCls = trimmed.substringAfter("/", "").trim()
+            if (
+                resolvedPkg.isNotBlank() &&
+                resolvedPkg != "android" &&
+                resolvedPkg != "com.android.internal.app" &&
+                !resolvedCls.contains("ResolverActivity", ignoreCase = true)
+            ) {
+                return resolvedPkg
+            }
+        }
+        return null
     }
 
     private fun resolveSelectedLauncherPackage(): String? {

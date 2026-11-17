@@ -320,8 +320,24 @@ class CoreManagerService private constructor(): ICoreManager.Stub() {
             return mAaVirtualDisplayAdapter?.mDisplayId ?: Display.INVALID_DISPLAY
         }
 
+        fun getDisplayWidth(): Int {
+            return mAaVirtualDisplayAdapter?.mDisplayWidth ?: 0
+        }
+
+        fun getDisplayHeight(): Int {
+            return mAaVirtualDisplayAdapter?.mDisplayHeight ?: 0
+        }
+
         fun getDensityDpi(): Int{
             return mAaVirtualDisplayAdapter?.mDensityDpi ?: 0
+        }
+
+        fun getLauncherPackage(): String? {
+            return mAaVirtualDisplayAdapter?.launcherPackage
+        }
+
+        fun getLauncherUid(): Int {
+            return mAaVirtualDisplayAdapter?.mLauncherUid ?: -1
         }
     }
 
